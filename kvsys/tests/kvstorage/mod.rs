@@ -1,7 +1,6 @@
-#![allow(dead_code)]
 #[cfg(test)]
 mod test {
-    use kvstorage::KVStorage;
+    use kvsys::kvstorage::KVStorage;
     use std::fs;
 
     fn gen_key() -> [u8; 8] {

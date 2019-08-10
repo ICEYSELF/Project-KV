@@ -5,8 +5,10 @@ authors = ["ICEY <icey@icey.tech>"]
 edition = "2018"
 
 [lib]
-name = "kvstorage"
-path = "src/kvstorage/lib.rs"
+name = "kvsys"
+
+[[bin]]
+name = "kvserver"
 
 [[test]]
 name = "kvstorage_tests"
@@ -15,3 +17,4 @@ path = "tests/kvstorage/mod.rs"
 [dependencies]
 tempfile = "3"
 rand = "0.7.0"
+clap = "2.33.0"

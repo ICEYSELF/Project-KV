@@ -165,7 +165,7 @@ impl KVStorage {
 
 #[cfg(test)]
 mod tests {
-    use crate::KVStorage;
+    use crate::kvstorage::KVStorage;
 
     #[test]
     fn test_encode_key() {
