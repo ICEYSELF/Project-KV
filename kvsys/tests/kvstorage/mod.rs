@@ -56,18 +56,18 @@ mod test {
 
     #[test]
     fn test_persist_storage() {
-        let _ = fs::remove_file("test.kv");
+        let _ = fs::remove_file("test1.kv");
         let (key, value) = (gen_key(), gen_value());
 
         {
-            let f = fs::File::create("test.kv").unwrap();
+            let f = fs::File::create("test1.kv").unwrap();
             let mut kv = KVStorage::new(f);
             kv.put(&key, value);
             kv.shutdown();
         }
 
         {
-            let f = fs::File::open("test.kv").unwrap();
+            let f = fs::File::open("test1.kv").unwrap();
             let kv = match KVStorage::from_existing_file(f) {
                 Ok(kv) => kv,
                 Err(e) => {
@@ -83,8 +83,8 @@ mod test {
 
     #[test]
     fn test_rw_some() {
-        let _ = fs::remove_file("test.kv");
-        let f = fs::File::create("test.kv").unwrap();
+        let _ = fs::remove_file("test2.kv");
+        let f = fs::File::create("test2.kv").unwrap();
         let mut kv = KVStorage::new(f);
 
         let mut keys = Vec::new();
@@ -107,12 +107,12 @@ mod test {
 
     #[test]
     fn test_persist_some() {
-        let _ = fs::remove_file("test.kv");
+        let _ = fs::remove_file("test3.kv");
 
         let mut keys = Vec::new();
         let mut values = Vec::new();
         {
-            let f = fs::File::create("test.kv").unwrap();
+            let f = fs::File::create("test3.kv").unwrap();
             let mut kv = KVStorage::new(f);
             for i in 0..255 {
                 let (key, value) = (gen_key_n(i), gen_value());
@@ -124,7 +124,7 @@ mod test {
         }
 
         {
-            let f = fs::File::open("test.kv").unwrap();
+            let f = fs::File::open("test3.kv").unwrap();
             let kv = KVStorage::from_existing_file(f).unwrap();
             for i in 0..255 {
                 let key = keys[i];
@@ -137,13 +137,13 @@ mod test {
 
     #[test]
     fn test_persist_with_delete() {
-        let _ = fs::remove_file("test.kv");
+        let _ = fs::remove_file("test4.kv");
 
         let mut keys = Vec::new();
         let mut keys_to_delete = Vec::new();
         let mut values = Vec::new();
         {
-            let f = fs::File::create("test.kv").unwrap();
+            let f = fs::File::create("test4.kv").unwrap();
             let mut kv = KVStorage::new(f);
             for i in 0..255 {
                 let (key, value) = (gen_key_n(i), gen_value());
@@ -165,7 +165,7 @@ mod test {
         }
 
         {
-            let f = fs::File::open("test.kv").unwrap();
+            let f = fs::File::open("test4.kv").unwrap();
             let kv = KVStorage::from_existing_file(f).unwrap();
             for i in 0..255 {
                 let key = keys[i];
