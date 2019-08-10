@@ -1,17 +1,16 @@
 use std::collections::BTreeMap;
 use std::{thread, fs};
 use std::sync::mpsc;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::ops::Bound::{Included, Excluded};
+use std::error::Error;
+use std::thread::JoinHandle;
 
-type Key = [u8; 8];
+pub type Key = [u8; 8];
+pub type Value = [u8; 256];
 type InternKey = u64;
-type Value = [u8; 256];
 
-enum DiskLogMessage {
-    Put(Key, Value),
-    Delete(Key)
-}
+enum DiskLogMessage { Put(Key, Value), Delete(Key), Shutdown }
 
 #[allow(dead_code)]
 pub struct KVStorage {
@@ -20,30 +19,31 @@ pub struct KVStorage {
     disk_log_sender: mpsc::Sender<DiskLogMessage>
 }
 
-pub struct KVError {
-    pub reason: String
-}
-
-impl KVError {
-    pub fn new(reason: String) -> Self {
-        KVError { reason }
-    }
-}
-
 impl KVStorage {
-    pub fn new(mut log_file: fs::File) -> Self {
-        let (sender, receiver) = mpsc::channel::<DiskLogMessage>();
-        let log_thread = thread::spawn(move || {
-            loop {
-                let message = receiver.recv().unwrap();
-                log_file.write(&KVStorage::serialize(&message)).unwrap();
-            }
-        });
+    pub fn new(log_file: fs::File) -> Self {
+        let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
         KVStorage{ mem_storage: BTreeMap::new(), disk_log_thread: log_thread, disk_log_sender: sender }
     }
 
-    pub fn from_existing_file(_log_file: fs::File) -> Result<Self, KVError> {
-        unreachable!()
+    pub fn from_existing_file(mut log_file: fs::File) -> Result<Self, Box<dyn Error>> {
+        let mut mem_storage = BTreeMap::new();
+
+        let mut operate: [u8; 1] = [0];
+        while log_file.read_exact(&mut operate).is_ok() {
+            let mut key: [u8; 8] = [0; 8];
+            log_file.read_exact(&mut key)?;
+            if operate[0] == b'P' {
+                let mut value: [u8; 256] = [0; 256];
+                log_file.read_exact(&mut value)?;
+                mem_storage.insert(KVStorage::encode_key(&key), Some(value));
+            }
+            else if operate[0] == b'D' {
+                mem_storage.remove(&KVStorage::encode_key(&key));
+            }
+        }
+
+        let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
+        Ok(KVStorage{ mem_storage, disk_log_sender: sender, disk_log_thread: log_thread })
     }
 
     pub fn get(&self, key: &Key) -> &Option<Value> {
@@ -87,6 +87,11 @@ impl KVStorage {
             .collect::<Vec<_>>()
     }
 
+    pub fn shutdown(self) {
+        self.disk_log_sender.send(DiskLogMessage::Shutdown).unwrap();
+        self.disk_log_thread.join().unwrap();
+    }
+
     fn encode_key(flat: &Key) -> InternKey {
         unsafe {
             let flat = flat as *const u8 as *const u64;
@@ -104,17 +109,34 @@ impl KVStorage {
     fn serialize(message: &DiskLogMessage) -> Vec<u8> {
         match message {
             DiskLogMessage::Put(key, value) => {
-                let mut ret = b"PUT".to_vec();
+                let mut ret = b"P".to_vec();
                 ret.append(&mut key.to_vec());
                 ret.append(&mut value.to_vec());
                 ret
             },
             DiskLogMessage::Delete(key) => {
-                let mut ret = b"DEL".to_vec();
+                let mut ret = b"D".to_vec();
                 ret.append(&mut key.to_vec());
                 ret
+            },
+            DiskLogMessage::Shutdown => {
+                unreachable!()
             }
         }
+    }
+
+    fn create_disk_logger(mut log_file: fs::File) -> (mpsc::Sender<DiskLogMessage>, JoinHandle<()>) {
+        let (sender, receiver) = mpsc::channel::<DiskLogMessage>();
+        let log_thread = thread::spawn(move || {
+            loop {
+                let message = receiver.recv().unwrap();
+                if let DiskLogMessage::Shutdown = message {
+                    break;
+                }
+                log_file.write(&KVStorage::serialize(&message)).unwrap();
+            }
+        });
+        (sender, log_thread)
     }
 }
 

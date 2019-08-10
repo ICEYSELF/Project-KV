@@ -9,7 +9,9 @@ name = "kvstorage"
 path = "src/kvstorage/lib.rs"
 
 [[test]]
-name = "tests"
-path = "tests/mod.rs"
+name = "kvstorage_tests"
+path = "tests/kvstorage/mod.rs"
 
 [dependencies]
+tempfile = "3"
+rand = "0.7.0"
