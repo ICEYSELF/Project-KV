@@ -1,7 +1,8 @@
 use clap::{Arg, App};
+use kvsys::kvserver::{KVServerConfig, run_server};
 
 fn main() {
-    let _matches = App::new("Project-KV Server Program")
+    let matches = App::new("Project-KV Server Program")
         .version("0.1")
         .author("ICEY <icey@icey.tech>")
         .about("The official server program making use of Project-KV kvstorage library")
@@ -11,7 +12,7 @@ fn main() {
             .value_name("PORT")
             .help("Choose the port the server should listen to")
             .takes_value(true))
-        .arg(Arg::with_name("filename")
+        .arg(Arg::with_name("dbfile")
             .short("f")
             .long("filename")
             .value_name("FILE")
@@ -19,5 +20,7 @@ fn main() {
             .takes_value(true))
         .get_matches();
 
+    let config = KVServerConfig::from_arg_matches(matches);
 
+    run_server(config);
 }
