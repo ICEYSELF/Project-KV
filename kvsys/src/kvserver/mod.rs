@@ -100,7 +100,7 @@ fn handle_connection(mut stream: TcpStream, storage_engine: Arc<RwLock<KVStorage
             stream.read_exact(&mut key)?;
             stream.read_exact(&mut value)?;
             info!("command used by client: PUT {:?} VALUE", key.to_vec());
-            let _ret = storage_engine.write().unwrap().put(&key, value);
+            let _ret = storage_engine.write().unwrap().put(&key, &value);
             Ok(())
         },
         GET => {

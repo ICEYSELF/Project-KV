@@ -45,10 +45,10 @@ mod test {
         let mut kv = KVStorage::new(f);
 
         let (key, value) = (gen_key(), gen_value());
-        kv.put(&key, value);
+        kv.put(&key, &value);
 
         let result = kv.get(&key);
-        assert!(check_value_eq(&result.unwrap(), &value));
+        assert!(check_value_eq(&(result.unwrap())[..], &value));
 
         kv.shutdown();
     }
@@ -61,7 +61,7 @@ mod test {
         {
             let f = fs::File::create("test1.kv").unwrap();
             let mut kv = KVStorage::new(f);
-            kv.put(&key, value);
+            kv.put(&key, &value);
             kv.shutdown();
         }
 
@@ -75,7 +75,7 @@ mod test {
                 }
             };
             eprintln!("{:?}", kv);
-            assert!(check_value_eq(&kv.get(&key).unwrap(), &value));
+            assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
             kv.shutdown();
         }
     }
@@ -92,13 +92,13 @@ mod test {
             let (key, value) = (gen_key_n(i), gen_value());
             keys.push(key);
             values.push(value);
-            kv.put(&key, value);
+            kv.put(&key, &value);
         }
 
         for i in 0..255 {
             let key = keys[i];
             let value = values[i];
-            assert!(check_value_eq(&kv.get(&key).unwrap(), &value));
+            assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
         }
 
         kv.shutdown();
@@ -117,7 +117,7 @@ mod test {
                 let (key, value) = (gen_key_n(i), gen_value());
                 keys.push(key);
                 values.push(value);
-                kv.put(&key, value);
+                kv.put(&key, &value);
             }
             kv.shutdown();
         }
@@ -128,7 +128,7 @@ mod test {
             for i in 0..255 {
                 let key = keys[i];
                 let value = values[i];
-                assert!(check_value_eq(&kv.get(&key).unwrap(), &value));
+                assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
             }
             kv.shutdown();
         }
@@ -153,7 +153,7 @@ mod test {
                     values.push(None);
                     keys_to_delete.push(key)
                 }
-                kv.put(&key, value);
+                kv.put(&key, &value);
             }
 
             for key in keys_to_delete.iter() {
@@ -169,7 +169,7 @@ mod test {
             for i in 0..255 {
                 let key = keys[i];
                 if let Some(value) = values[i] {
-                    assert!(check_value_eq(&kv.get(&key).unwrap(), &value));
+                    assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
                 } else {
                     assert!(kv.get(&key).is_none());
                 }

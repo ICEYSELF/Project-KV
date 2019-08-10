@@ -6,17 +6,17 @@ use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::thread::JoinHandle;
 use std::fmt::{Debug, Formatter};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub type Key = [u8; 8];
 pub type Value = [u8; 256];
 type InternKey = u64;
 
-enum DiskLogMessage { Put(Key, Value), Delete(Key), Shutdown }
+enum DiskLogMessage { Put(Key, Arc<Value>), Delete(Key), Shutdown }
 
 #[allow(dead_code)]
 pub struct KVStorage {
-    mem_storage: BTreeMap<InternKey, Option<Value>>,
+    mem_storage: BTreeMap<InternKey, Option<Arc<Value>>>,
     disk_log_thread: thread::JoinHandle<()>,
     disk_log_sender: Mutex<mpsc::Sender<DiskLogMessage>>
 }
@@ -59,7 +59,7 @@ impl KVStorage {
             if operate[0] == b'P' {
                 let mut value: [u8; 256] = [0; 256];
                 log_file.read_exact(&mut value)?;
-                mem_storage.insert(KVStorage::encode_key(&key), Some(value));
+                mem_storage.insert(KVStorage::encode_key(&key), Some(Arc::new(value)));
             }
             else if operate[0] == b'D' {
                 mem_storage.remove(&KVStorage::encode_key(&key));
@@ -70,19 +70,20 @@ impl KVStorage {
         Ok(KVStorage{ mem_storage, disk_log_sender: Mutex::new(sender), disk_log_thread: log_thread })
     }
 
-    pub fn get(&self, key: &Key) -> Option<Value> {
+    pub fn get(&self, key: &Key) -> Option<Arc<Value>> {
         let encoded_key = KVStorage::encode_key(key);
         if let Some(maybe_value) = self.mem_storage.get(&encoded_key) {
-            *maybe_value
+            (*maybe_value).clone()
         }
         else {
             None
         }
     }
 
-    pub fn put(&mut self, key: &Key, value: Value) {
+    pub fn put(&mut self, key: &Key, value: &Value) {
         let encoded_key = KVStorage::encode_key(key);
-        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Put(*key, value)).unwrap();
+        let value = Arc::new(*value);
+        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Put(*key, value.clone())).unwrap();
         self.mem_storage.insert(encoded_key, Some(value));
     }
 
@@ -97,7 +98,7 @@ impl KVStorage {
         }
     }
 
-    pub fn scan(&self, key1: &Key, key2: &Key) -> Vec<(Key, Value)> {
+    pub fn scan(&self, key1: &Key, key2: &Key) -> Vec<(Key, Arc<Value>)> {
         let (encoded_key1, encoded_key2) = (KVStorage::encode_key(key1), KVStorage::encode_key(key2));
         self.mem_storage.range((Included(encoded_key1), Excluded(encoded_key2)))
             .filter(|x| {
@@ -106,7 +107,7 @@ impl KVStorage {
             })
             .map(|x| {
                 let (k, v) = x;
-                (KVStorage::decode_key(*k), v.unwrap())
+                (KVStorage::decode_key(*k), v.as_ref().unwrap().clone())
             })
             .collect::<Vec<_>>()
     }

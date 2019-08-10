@@ -10,6 +10,9 @@ name = "kvsys"
 [[bin]]
 name = "kvserver"
 
+[[bin]]
+name = "kvclient"
+
 [[test]]
 name = "kvstorage_tests"
 path = "tests/kvstorage/mod.rs"
