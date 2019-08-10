@@ -1,0 +1,15 @@
+[package]
+name = "kvsys"
+version = "0.1.0"
+authors = ["ICEY <icey@icey.tech>"]
+edition = "2018"
+
+[lib]
+name = "kvstorage"
+path = "src/kvstorage/lib.rs"
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"
+
+[dependencies]
