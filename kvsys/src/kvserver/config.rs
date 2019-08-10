@@ -1,5 +1,9 @@
-use clap::ArgMatches;
-use log::{info, warn};
+use clap::{ArgMatches, value_t};
+use log::info;
+
+const DEFAULT_FILENAME: &str = "data.kv";
+const DEFAULT_LISTEN_PORT: u16 = 1926;
+const DEFAULT_THREADS: u16 = 4;
 
 pub struct KVServerConfig {
     pub db_file: String,
@@ -8,36 +12,26 @@ pub struct KVServerConfig {
 }
 
 impl KVServerConfig {
+    pub fn from_default() -> Self {
+        KVServerConfig {
+            db_file: DEFAULT_FILENAME.to_owned(),
+            listen_port: DEFAULT_LISTEN_PORT,
+            threads: DEFAULT_THREADS }
+    }
+
     pub fn from_arg_matches(matches: ArgMatches) -> Self {
-        let db_file =
-            matches
-                .value_of("dbfile")
-                .unwrap_or_else(|| {
-                    info!("no dbfile provided from commandline, using default file name 'data.kv'");
-                    "data.kv"
-                });
-        let listen_port =
-            matches
-                .value_of("port")
-                .unwrap_or_else(|| {
-                    info!("no port provided from commandline, using default port 1926");
-                    "1926"
-                })
-                .parse().unwrap_or_else(|_| {
-                    warn!("port provided from commandline was invalid, using default port 1926");
-                    1926
-                });
-        let threads =
-            matches
-                .value_of("threads")
-                .unwrap_or_else(|| {
-                    info!("no thread pool size provided from commandline, using default value 16");
-                    "16"
-                })
-                .parse().unwrap_or_else(|_| {
-                    warn!("thread pool size provided from commandline was invalid, using default value 16");
-                    16
-                });
-        KVServerConfig { db_file: db_file.to_owned(), listen_port, threads }
+        let db_file = value_t!(matches, "dbfile", String).unwrap_or_else(|_| {
+                info!("no valid dbfile provided from commandline, using default file name '{}'", DEFAULT_FILENAME);
+                DEFAULT_FILENAME.to_owned()
+            });
+        let listen_port = value_t!(matches, "port", u16).unwrap_or_else(|_| {
+                info!("no valid listen port provided from commandline, using default port {}", DEFAULT_LISTEN_PORT);
+                DEFAULT_LISTEN_PORT
+            });
+        let threads = value_t!(matches, "threads", u16).unwrap_or_else(|_| {
+                info!("no valid thread pool size provided from commandline, using default size {}", DEFAULT_THREADS);
+                DEFAULT_THREADS
+            });
+        KVServerConfig { db_file, listen_port, threads }
     }
 }

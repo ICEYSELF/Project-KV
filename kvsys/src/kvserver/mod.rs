@@ -2,15 +2,16 @@ pub mod config;
 pub use config::KVServerConfig;
 
 use std::{fs, path, process};
-use std::net::{TcpListener, SocketAddr};
+use std::net::{TcpListener, SocketAddr, TcpStream};
 use std::sync::{Arc, RwLock};
 
 use crate::kvstorage::KVStorage;
+use crate::threadpool::ThreadPool;
 
-use threads_pool::*;
 use log::{error, warn, info};
 use std::error::Error;
-use std::io::Write;
+#[allow(unused_imports)]
+use std::io::{Write, Read};
 
 fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
     let path = path::Path::new(&config.db_file);
@@ -43,15 +44,13 @@ fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
 
 fn bind_tcp_listener(config: &KVServerConfig) -> TcpListener {
     let addr = SocketAddr::from(([127, 0, 0, 1], config.listen_port));
-    let tcp_listener = TcpListener::bind(&addr);
-    match tcp_listener {
-        Ok(tcp_listener) => tcp_listener,
-        Err(e) => {
+    TcpListener::bind(&addr).unwrap_or_else(
+        | e | {
             error!("failed binding to port {}", config.listen_port);
             error!("extra info: {}", e.description());
             process::exit(1)
         }
-    }
+    )
 }
 
 pub fn run_server(config: KVServerConfig) {
@@ -65,12 +64,64 @@ pub fn run_server(config: KVServerConfig) {
             info!("automatically gave up and moved to next iteration");
             break;
         }
-        let mut stream = stream.unwrap();
+        let stream = stream.unwrap();
 
         let storage = storage.clone();
-        let _ = pool.execute(move || {
-            storage.write().unwrap().put(&[0; 8], [0; 256]);
-            let _ = stream.flush();
+        pool.execute(move || {
+            if let Err(e) = handle_connection(stream, storage) {
+                warn!("an error occurred when processing request");
+                info!("detailed error info: {}", e.description());
+            }
         });
+    }
+}
+
+const SCAN: u8 = b'S';
+const PUT: u8 = b'P';
+const GET: u8 = b'G';
+const DEL: u8 = b'D';
+
+fn handle_connection(mut stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
+    let mut command = [0u8];
+    stream.read_exact(&mut command)?;
+    match command[0] {
+        SCAN => {
+            let mut key0 = [0u8; 8];
+            let mut key1 = [0u8; 8];
+            stream.read_exact(&mut key0)?;
+            stream.read_exact(&mut key1)?;
+            info!("command used by client: SCAN {:?} {:?}", key0.to_vec(), key1.to_vec());
+            let _ret = storage_engine.read().unwrap().scan(&key0, &key1);
+            Ok(())
+        },
+        PUT => {
+            let mut key = [0u8; 8];
+            let mut value = [0u8; 256];
+            stream.read_exact(&mut key)?;
+            stream.read_exact(&mut value)?;
+            info!("command used by client: PUT {:?} VALUE", key.to_vec());
+            let _ret = storage_engine.write().unwrap().put(&key, value);
+            Ok(())
+        },
+        GET => {
+            let mut key = [0u8; 8];
+            stream.read_exact(&mut key)?;
+            info!("command used by client: GET {:?}", key.to_vec());
+            let _ret = storage_engine.read().unwrap().get(&key);
+            Ok(())
+        },
+        DEL => {
+            let mut key = [0u8; 8];
+            stream.read_exact(&mut key)?;
+            info!("command used by client: DEL {:?}", key.to_vec());
+            let _ret = storage_engine.write().unwrap().delete(&key);
+            Ok(())
+        },
+        _ => {
+            warn!("invalid command: {}", command[0]);
+            info!("maybe someone misused the client side API, or used incorrect client");
+            info!("invalid command was ignored by default");
+            Ok(())
+        }
     }
 }

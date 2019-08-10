@@ -1,7 +1,10 @@
 use clap::{Arg, App};
 use kvsys::kvserver::{KVServerConfig, run_server};
+use env_logger;
 
 fn main() {
+    env_logger::init();
+
     let matches = App::new("Project-KV Server Program")
         .version("0.1")
         .author("ICEY <icey@icey.tech>")
