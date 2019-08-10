@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::thread::JoinHandle;
+use std::fmt::{Debug, Formatter};
 
 pub type Key = [u8; 8];
 pub type Value = [u8; 256];
@@ -17,6 +18,28 @@ pub struct KVStorage {
     mem_storage: BTreeMap<InternKey, Option<Value>>,
     disk_log_thread: thread::JoinHandle<()>,
     disk_log_sender: mpsc::Sender<DiskLogMessage>
+}
+
+impl KVStorage {
+    fn format_value(value: &[u8; 256]) -> String {
+        let mut ret = String::new();
+        for &n in value.iter() {
+            ret.push_str(format!("{:x}", n).as_str());
+        }
+        ret
+    }
+}
+
+impl Debug for KVStorage {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "KV [")?;
+        for (key, maybe_value) in self.mem_storage.iter() {
+            if let Some(value) = maybe_value {
+                write!(f, "{} => {},", key, KVStorage::format_value(value))?;
+            }
+        }
+        write!(f, "]")
+    }
 }
 
 impl KVStorage {
@@ -46,13 +69,13 @@ impl KVStorage {
         Ok(KVStorage{ mem_storage, disk_log_sender: sender, disk_log_thread: log_thread })
     }
 
-    pub fn get(&self, key: &Key) -> &Option<Value> {
+    pub fn get(&self, key: &Key) -> Option<Value> {
         let encoded_key = KVStorage::encode_key(key);
         if let Some(maybe_value) = self.mem_storage.get(&encoded_key) {
-            maybe_value
+            *maybe_value
         }
         else {
-            &None
+            None
         }
     }
 
@@ -73,7 +96,7 @@ impl KVStorage {
         }
     }
 
-    pub fn scan(&self, key1: &Key, key2: &Key) -> Vec<(Key, &Option<Value>)> {
+    pub fn scan(&self, key1: &Key, key2: &Key) -> Vec<(Key, Value)> {
         let (encoded_key1, encoded_key2) = (KVStorage::encode_key(key1), KVStorage::encode_key(key2));
         self.mem_storage.range((Included(encoded_key1), Excluded(encoded_key2)))
             .filter(|x| {
@@ -82,7 +105,7 @@ impl KVStorage {
             })
             .map(|x| {
                 let (k, v) = x;
-                (KVStorage::decode_key(*k), v)
+                (KVStorage::decode_key(*k), v.unwrap())
             })
             .collect::<Vec<_>>()
     }
