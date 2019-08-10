@@ -6,6 +6,7 @@ use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::thread::JoinHandle;
 use std::fmt::{Debug, Formatter};
+use std::sync::Mutex;
 
 pub type Key = [u8; 8];
 pub type Value = [u8; 256];
@@ -17,7 +18,7 @@ enum DiskLogMessage { Put(Key, Value), Delete(Key), Shutdown }
 pub struct KVStorage {
     mem_storage: BTreeMap<InternKey, Option<Value>>,
     disk_log_thread: thread::JoinHandle<()>,
-    disk_log_sender: mpsc::Sender<DiskLogMessage>
+    disk_log_sender: Mutex<mpsc::Sender<DiskLogMessage>>
 }
 
 impl KVStorage {
@@ -45,7 +46,7 @@ impl Debug for KVStorage {
 impl KVStorage {
     pub fn new(log_file: fs::File) -> Self {
         let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
-        KVStorage{ mem_storage: BTreeMap::new(), disk_log_thread: log_thread, disk_log_sender: sender }
+        KVStorage{ mem_storage: BTreeMap::new(), disk_log_thread: log_thread, disk_log_sender: Mutex::new(sender) }
     }
 
     pub fn from_existing_file(mut log_file: fs::File) -> Result<Self, Box<dyn Error>> {
@@ -66,7 +67,7 @@ impl KVStorage {
         }
 
         let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
-        Ok(KVStorage{ mem_storage, disk_log_sender: sender, disk_log_thread: log_thread })
+        Ok(KVStorage{ mem_storage, disk_log_sender: Mutex::new(sender), disk_log_thread: log_thread })
     }
 
     pub fn get(&self, key: &Key) -> Option<Value> {
@@ -81,14 +82,14 @@ impl KVStorage {
 
     pub fn put(&mut self, key: &Key, value: Value) {
         let encoded_key = KVStorage::encode_key(key);
-        self.disk_log_sender.send(DiskLogMessage::Put(*key, value)).unwrap();
+        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Put(*key, value)).unwrap();
         self.mem_storage.insert(encoded_key, Some(value));
     }
 
     pub fn delete(&mut self, key: &Key) -> usize {
         let encoded_key = KVStorage::encode_key(key);
         if let Some(maybe_value) = self.mem_storage.get_mut(&encoded_key) {
-            self.disk_log_sender.send(DiskLogMessage::Delete(*key)).unwrap();
+            self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Delete(*key)).unwrap();
             *maybe_value = None;
             1
         } else {
@@ -111,7 +112,7 @@ impl KVStorage {
     }
 
     pub fn shutdown(self) {
-        self.disk_log_sender.send(DiskLogMessage::Shutdown).unwrap();
+        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Shutdown).unwrap();
         self.disk_log_thread.join().unwrap();
     }
 

@@ -3,7 +3,7 @@ pub use config::KVServerConfig;
 
 use std::{fs, path, process};
 use std::net::{TcpListener, SocketAddr};
-use std::sync::{Arc, RwLock, Mutex};
+use std::sync::{Arc, RwLock};
 
 use crate::kvstorage::KVStorage;
 
@@ -12,20 +12,20 @@ use log::{error, warn, info};
 use std::error::Error;
 use std::io::Write;
 
-pub fn run_server(config: KVServerConfig) {
+fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
     let path = path::Path::new(&config.db_file);
     let is_existing = path.exists();
     let file = if is_existing {
         fs::File::open(path)
     } else {
         fs::File::create(path)
-    };
-
-    if let Err(e) = file {
-        error!("failed opening or creating file {}", config.db_file);
-        process::exit(1);
-    }
-    let file = file.unwrap();
+    }.unwrap_or_else(
+        | e | {
+            error!("failed opening or creating file {}", config.db_file);
+            error!("extra info: {}", e.description());
+            process::exit(1)
+        }
+    );
 
     let storage = if is_existing {
         KVStorage::from_existing_file(file).unwrap_or_else(| e | {
@@ -37,15 +37,26 @@ pub fn run_server(config: KVServerConfig) {
     } else {
         KVStorage::new(file)
     };
-    let storage = Arc::new(Mutex::new(storage));
 
+    Arc::new(RwLock::new(storage))
+}
+
+fn bind_tcp_listener(config: &KVServerConfig) -> TcpListener {
     let addr = SocketAddr::from(([127, 0, 0, 1], config.listen_port));
     let tcp_listener = TcpListener::bind(&addr);
-    if let Err(e) = tcp_listener {
-        error!("failed binding to port {}", config.listen_port);
-        process::exit(1);
+    match tcp_listener {
+        Ok(tcp_listener) => tcp_listener,
+        Err(e) => {
+            error!("failed binding to port {}", config.listen_port);
+            error!("extra info: {}", e.description());
+            process::exit(1)
+        }
     }
-    let tcp_listener = tcp_listener.unwrap();
+}
+
+pub fn run_server(config: KVServerConfig) {
+    let storage = create_storage_engine(&config);
+    let tcp_listener = bind_tcp_listener(&config);
     let pool = ThreadPool::new(config.threads as usize);
 
     for stream in tcp_listener.incoming() {
@@ -57,9 +68,9 @@ pub fn run_server(config: KVServerConfig) {
         let mut stream = stream.unwrap();
 
         let storage = storage.clone();
-        pool.execute(move || {
-            storage.lock().unwrap().put(&[0; 8], [0; 256]);
-            stream.flush();
+        let _ = pool.execute(move || {
+            storage.write().unwrap().put(&[0; 8], [0; 256]);
+            let _ = stream.flush();
         });
     }
 }
