@@ -119,7 +119,7 @@ mod test_server_handle_connection {
     use crate::util::{gen_key, gen_value};
     use crate::chunktps::ChunktpsConnection;
     use crate::kvserver::handle_connection;
-    use crate::kvserver::protocol::Request;
+    use crate::kvserver::protocol::{Request, ReplyChunk};
 
     use std::sync::{Arc, RwLock};
     use std::net::{TcpStream, TcpListener};
@@ -149,5 +149,36 @@ mod test_server_handle_connection {
 
         t.join().unwrap();
         assert_eq!(storage_engine.read().unwrap().get(&key).unwrap().to_vec(), value.to_vec());
+    }
+
+    #[test]
+    fn test_handle_get() {
+        let _ = fs::remove_file("test_get.kv");
+        let log_file = fs::File::create("test_get.kv").unwrap();
+        let storage_engine = Arc::new(RwLock::new(KVStorage::new(log_file)));
+        let key = gen_key();
+        let value = gen_value();
+        storage_engine.write().unwrap().put(&key, &value);
+        let storage_engine_clone = storage_engine.clone();
+        let t = thread::spawn(move || {
+            let tcp_listener = TcpListener::bind("127.0.0.1:2333").unwrap();
+            let (tcp_stream, _) = tcp_listener.accept().unwrap();
+            handle_connection(tcp_stream, storage_engine_clone).unwrap();
+        });
+
+        thread::sleep(Duration::from_secs(1));
+        let tcp_stream = TcpStream::connect("127.0.0.1:2333").unwrap();
+        let mut chunktps = ChunktpsConnection::new(tcp_stream);
+        chunktps.write_chunk(Request::Get(key).serialize()).unwrap();
+        let reply = ReplyChunk::deserialize(chunktps.read_chunk().unwrap()).unwrap();
+        match reply {
+            ReplyChunk::SingleValue(v) => {
+                assert_eq!(v.unwrap().to_vec(), value.to_vec())
+            },
+            _ => panic!()
+        }
+
+        chunktps.write_chunk(Request::Close.serialize()).unwrap();
+        t.join().unwrap();
     }
 }
