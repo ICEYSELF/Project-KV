@@ -1,6 +1,7 @@
 use std::net::TcpStream;
 use std::error::Error;
 use std::fmt;
+use std::thread;
 use std::fmt::{Display, Formatter};
 use std::io::{Read, Write};
 
@@ -60,6 +61,7 @@ impl ChunktpsConnection {
 
     pub fn write_chunk(&mut self, data: Vec<u8>) -> Result<(), Box<dyn Error>> {
         let size = data.len();
+        assert!(size <= 65535);
         let size = [(size / 256) as u8, (size % 256) as u8];
 
         self.tcp_stream.write(&CHUNKTPS_MAGIC)?;
@@ -77,12 +79,43 @@ impl ChunktpsConnection {
     }
 }
 
-#[cfg!(test)]
+#[cfg(test)]
 mod test {
     use crate::chunktps::ChunktpsConnection;
+    use std::net::{TcpListener, TcpStream};
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn test_basic_rw() {
+        let data: [&[u8]; 7] = [
+            b"this is the first message to send",
+            b"deadbeef,cafebabe",
+            b"       the   C O N N E C T I O N should have been established",
+            b"cubical type theory and ice1000 are both perfect",
+            b"Haskell considered harmful",
+            b"\x32\x33\xff\xff\xfe\x7c\xde\xad\xbe\xef",
+            b"this is the last message to send"
+        ];
 
+        let t = thread::spawn(
+            move || {
+                let listener = TcpListener::bind("127.0.0.1:8964").unwrap();
+                let (stream, _) = listener.accept().unwrap();
+                let mut chunktps = ChunktpsConnection::new(stream);
+                for &piece in data.iter() {
+                    chunktps.write_chunk(piece.to_vec()).unwrap();
+                }
+            }
+        );
+
+        thread::sleep(Duration::from_secs(5));
+        let stream = TcpStream::connect("127.0.0.1:8964").unwrap();
+        let mut chunktps = ChunktpsConnection::new(stream);
+        for i in 0..data.len() {
+            assert_eq!(chunktps.read_chunk().unwrap(), data[i].to_vec());
+        }
+
+        t.join().unwrap();
     }
 }
