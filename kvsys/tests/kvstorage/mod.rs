@@ -2,43 +2,7 @@
 mod test {
     use kvsys::kvstorage::KVStorage;
     use std::fs;
-
-    // TODO this piece of utility function duplicates, remove duplicates whenever possible.
-    fn gen_key() -> [u8; 8] {
-        let mut ret = [0u8; 8];
-        for v in ret.iter_mut() {
-            *v = rand::random();
-        }
-        ret
-    }
-
-    fn gen_key_n(n: u8) -> [u8; 8] {
-        let mut ret = [0u8; 8];
-        ret[7] = n;
-        ret
-    }
-
-    fn gen_value() -> [u8; 256] {
-        let mut ret = [0u8; 256];
-        for v in ret.iter_mut() {
-            *v = rand::random();
-        }
-        ret
-    }
-
-    fn check_value_eq(lhs: &[u8], rhs: &[u8]) -> bool {
-        lhs.len() == rhs.len() &&
-        lhs.iter()
-           .zip(rhs.iter())
-           .fold(true, |x, (x1, x2)| { x && (*x1 == *x2) })
-    }
-
-    #[test]
-    fn test_utilities() {
-        assert!(!check_value_eq(b"code", b"cod"));
-        assert!(!check_value_eq(b"code", b"coda"));
-        assert!(check_value_eq(b"code", b"code"));
-    }
+    use kvsys::util::{gen_key, gen_key_n, gen_value};
 
     #[test]
     fn test_basic_rw() {
@@ -48,8 +12,7 @@ mod test {
         let (key, value) = (gen_key(), gen_value());
         kv.put(&key, &value);
 
-        let result = kv.get(&key);
-        assert!(check_value_eq(&(result.unwrap())[..], &value));
+        assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
 
         kv.shutdown();
     }
@@ -68,15 +31,8 @@ mod test {
 
         {
             let f = fs::File::open("test1.kv").unwrap();
-            let kv = match KVStorage::from_existing_file(f) {
-                Ok(kv) => kv,
-                Err(e) => {
-                    eprintln!("{}", e.description());
-                    panic!()
-                }
-            };
-            eprintln!("{:?}", kv);
-            assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
+            let kv = KVStorage::from_existing_file(f).unwrap();
+            assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
             kv.shutdown();
         }
     }
@@ -99,7 +55,7 @@ mod test {
         for i in 0..255 {
             let key = keys[i];
             let value = values[i];
-            assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
+            assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
         }
 
         kv.shutdown();
@@ -129,7 +85,7 @@ mod test {
             for i in 0..255 {
                 let key = keys[i];
                 let value = values[i];
-                assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
+                assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
             }
             kv.shutdown();
         }
@@ -170,7 +126,7 @@ mod test {
             for i in 0..255 {
                 let key = keys[i];
                 if let Some(value) = values[i] {
-                    assert!(check_value_eq(&(kv.get(&key).unwrap())[..], &value));
+                    assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
                 } else {
                     assert!(kv.get(&key).is_none());
                 }
