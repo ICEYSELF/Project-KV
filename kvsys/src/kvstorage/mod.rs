@@ -7,6 +7,7 @@ use std::error::Error;
 use std::thread::JoinHandle;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
+use std::u64;
 
 pub type Key = [u8; 8];
 pub type Value = [u8; 256];
@@ -120,13 +121,13 @@ impl KVStorage {
     fn encode_key(flat: &Key) -> InternKey {
         unsafe {
             let flat = flat as *const u8 as *const u64;
-            (*flat).swap_bytes()
+            u64::from_be(*flat)
         }
     }
 
     fn decode_key(encoded: InternKey) -> Key {
         unsafe {
-            let bytes = &(encoded.swap_bytes()) as *const u64 as *const [u8; 8];
+            let bytes = &(u64::to_be(encoded)) as *const u64 as *const [u8; 8];
             *bytes
         }
     }

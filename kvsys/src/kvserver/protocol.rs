@@ -6,18 +6,72 @@ pub const DEL: u8 = b'D';
 pub use crate::kvstorage::Key;
 pub use crate::kvstorage::Value;
 
-pub fn do_get(key: &Key) -> Value {
-    unimplemented!()
+use std::sync::Arc;
+
+pub enum Request {
+    Scan(Key, Key),
+    Put(Key, Value),
+    Get(Key),
+    Del(Key)
 }
 
-pub fn do_put(key: &Key, value: &Value) {
-    unimplemented!()
+impl Request {
+    pub fn serialize(&self) -> Vec<u8> {
+        match self {
+            Request::Scan(key1, key2) => {
+                unimplemented!()
+            },
+            Request::Put(key, value) => {
+                unimplemented!()
+            },
+            Request::Get(key) => {
+                unimplemented!()
+            },
+            Request::Del(key) => {
+                unimplemented!()
+            }
+        }
+    }
+
+    pub fn deserialize_from(raw: Vec<u8>) -> Self {
+        unimplemented!()
+    }
 }
 
-pub fn do_del(key: &Key) {
-    unimplemented!()
+pub const SINGLE_VALUE: u8 = b'S';
+pub const NUMBER: u8 = b'N';
+pub const KV_PAIRS: u8 = b'P';
+
+pub enum ServerReplyChunk {
+    SingleValue(Arc<Value>),
+    Number(usize),
+    KVPairs(Vec<(Key, Arc<Value>)>)
 }
 
-pub fn do_scan(key1: &Key, key2: &Key) -> Vec<Value> {
-    unimplemented!()
+impl ServerReplyChunk {
+    pub fn serialize(&self) -> Vec<u8> {
+        match self {
+            ServerReplyChunk::SingleValue(value) => {
+                unimplemented!()
+            },
+            ServerReplyChunk::Number(number) => {
+                unimplemented!()
+            },
+            ServerReplyChunk::KVPairs(paris) => {
+                unimplemented!()
+            }
+        }
+    }
+}
+
+pub enum ReplyChunk {
+    SingleValue(Value),
+    Number(usize),
+    KVPairs(Vec<(Key, Value)>)
+}
+
+impl ReplyChunk {
+    pub fn deserialize(raw: Vec<u8>) -> Self {
+        unimplemented!()
+    }
 }
