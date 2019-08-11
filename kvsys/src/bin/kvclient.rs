@@ -17,7 +17,36 @@ fn mainloop(mut tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
         if parts.len() == 0 {
             eprintln!("please, input at least one command");
         }
+        match parts[0] {
+            "get" => {
+                if parts.len() != 2 {
+                    eprintln!("get requires exactly one argument");
+                    continue;
+                }
+
+                let bytes = parts[1].as_bytes();
+                if bytes.len() != 8 {
+                    eprintln!("size of key should be exactly 8 bytes");
+                    continue;
+                }
+
+                let bytes: [u8; 8] = *bytes[0..8];
+            },
+            "put" => {
+                if parts.len() != 3 {
+                    eprintln!("put requires exactly two arguments")
+                }
+
+                let key_bytes = parts[1].as_bytes();
+                let value_bytes = parts[2].as_bytes();
+            },
+            _ => {
+
+            }
+        }
+
     }
+    unreachable!()
 }
 
 fn main() {
