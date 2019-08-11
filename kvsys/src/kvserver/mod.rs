@@ -7,13 +7,13 @@ use std::{fs, path, process};
 use std::net::{TcpListener, SocketAddr, TcpStream};
 use std::sync::{Arc, RwLock};
 
-use crate::kvstorage::KVStorage;
+use crate::kvstorage::{KVStorage};
 use crate::threadpool::ThreadPool;
+use crate::kvserver::protocol::{Request, ServerReplyChunk, KV_PAIR_SERIALIZED_SIZE};
+use crate::chunktps::{ChunktpsConnection, CHUNK_MAX_SIZE};
 
 use log::{error, warn, info};
 use std::error::Error;
-#[allow(unused_imports)]
-use std::io::{Write, Read};
 
 fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
     let path = path::Path::new(&config.db_file);
@@ -78,50 +78,38 @@ pub fn run_server(config: KVServerConfig) {
     }
 }
 
-fn handle_connection(mut _stream: TcpStream, _storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
-    /*
-    let mut command = [0u8];
-    stream.read_exact(&mut command)?;
-    match command[0] {
-        SCAN => {
-            let mut key0 = [0u8; 8];
-            let mut key1 = [0u8; 8];
-            stream.read_exact(&mut key0)?;
-            stream.read_exact(&mut key1)?;
-            info!("command used by client: SCAN {:?} {:?}", key0.to_vec(), key1.to_vec());
-            let _ret = storage_engine.read().unwrap().scan(&key0, &key1);
-            Ok(())
-        },
-        PUT => {
-            let mut key = [0u8; 8];
-            let mut value = [0u8; 256];
-            stream.read_exact(&mut key)?;
-            stream.read_exact(&mut value)?;
-            info!("command used by client: PUT {:?} VALUE", key.to_vec());
-            let _ret = storage_engine.write().unwrap().put(&key, &value);
-            Ok(())
-        },
-        GET => {
-            let mut key = [0u8; 8];
-            stream.read_exact(&mut key)?;
-            info!("command used by client: GET {:?}", key.to_vec());
-            let _ret = storage_engine.read().unwrap().get(&key);
-            Ok(())
-        },
-        DEL => {
-            let mut key = [0u8; 8];
-            stream.read_exact(&mut key)?;
-            info!("command used by client: DEL {:?}", key.to_vec());
-            let _ret = storage_engine.write().unwrap().delete(&key);
-            Ok(())
-        },
-        _ => {
-            warn!("invalid command: {}", command[0]);
-            info!("maybe someone misused the client side API, or used incorrect client");
-            info!("invalid command was ignored by default");
-            Ok(())
+#[allow(unused_variables)]
+fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
+    let mut chunktps = ChunktpsConnection::new(stream);
+    loop {
+        match Request::deserialize_from(chunktps.read_chunk()?)? {
+            Request::Get(key) => {
+                let maybe_value = storage_engine.read().unwrap().get(&key);
+                chunktps.write_chunk(ServerReplyChunk::SingleValue(maybe_value).serialize())?;
+            },
+            Request::Put(key, value) => {
+                storage_engine.write().unwrap().put(&key, &value);
+            },
+            Request::Del(key) => {
+                let rows_effected = storage_engine.write().unwrap().delete(&key);
+                chunktps.write_chunk(ServerReplyChunk::Number(rows_effected).serialize())?;
+            },
+            Request::Scan(key1, key2) => {
+                const ROW_PER_CHUNK: usize = (CHUNK_MAX_SIZE - 1) / KV_PAIR_SERIALIZED_SIZE;
+                let scan_result = storage_engine.read().unwrap().scan(&key1, &key2);
+                for i in (0..scan_result.len()).step_by(ROW_PER_CHUNK) {
+                    let slice = if i + ROW_PER_CHUNK < scan_result.len() {
+                        &scan_result[i..i+ROW_PER_CHUNK]
+                    } else {
+                        &scan_result[i..scan_result.len()]
+                    };
+                    chunktps.write_chunk(ServerReplyChunk::KVPairs(slice).serialize())?;
+                }
+                chunktps.write_chunk(vec![])?;
+            },
+            Request::Close => {
+                return Ok(())
+            }
         }
     }
-    */
-    unimplemented!()
 }

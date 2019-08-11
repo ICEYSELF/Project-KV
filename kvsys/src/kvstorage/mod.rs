@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::u64;
 
 pub const KEY_SIZE: usize = 8;
-pub const VALUE_SIZE: usize = 512;
+pub const VALUE_SIZE: usize = 256;
 
 pub type Key = [u8; KEY_SIZE];
 pub type Value = [u8; VALUE_SIZE];

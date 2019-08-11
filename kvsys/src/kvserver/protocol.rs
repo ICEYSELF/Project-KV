@@ -127,18 +127,20 @@ pub const SINGLE_VALUE: u8 = b'S';
 pub const NUMBER: u8 = b'N';
 pub const KV_PAIRS: u8 = b'P';
 
-pub enum ServerReplyChunk {
-    SingleValue(Arc<Value>),
+pub enum ServerReplyChunk<'a> {
+    SingleValue(Option<Arc<Value>>),
     Number(usize),
-    KVPairs(Vec<(Key, Arc<Value>)>)
+    KVPairs(&'a [(Key, Arc<Value>)])
 }
 
-impl ServerReplyChunk {
+impl ServerReplyChunk<'_> {
     pub fn serialize(&self) -> Vec<u8> {
         match self {
             ServerReplyChunk::SingleValue(value) => {
                 let mut ret = vec![SINGLE_VALUE];
-                ret.append(&mut value.to_vec());
+                if let Some(value) = value {
+                    ret.append(&mut value.to_vec());
+                }
                 ret
             },
             ServerReplyChunk::Number(number) => {
@@ -154,7 +156,7 @@ impl ServerReplyChunk {
             },
             ServerReplyChunk::KVPairs(pairs) => {
                 let mut ret = vec![KV_PAIRS];
-                for (key, value) in pairs {
+                for (key, value) in pairs.iter() {
                     ret.append(&mut key.to_vec());
                     ret.append(&mut value.to_vec());
                 }
@@ -165,22 +167,26 @@ impl ServerReplyChunk {
 }
 
 pub enum ReplyChunk {
-    SingleValue(Value),
+    SingleValue(Option<Value>),
     Number(usize),
     KVPairs(Vec<(Key, Value)>)
 }
+
+pub const KV_PAIR_SERIALIZED_SIZE: usize = KEY_SIZE + VALUE_SIZE;
 
 impl ReplyChunk {
     pub fn deserialize(raw: Vec<u8>) -> Result<Self, ProtocolError> {
         assert!(!raw.is_empty());
         match raw[0] {
             SINGLE_VALUE => {
-                if raw.len() != 1 + VALUE_SIZE {
-                    Err(ProtocolError::new("incorrect content length"))
-                } else {
+                if raw.len() == 1 {
+                  Ok(ReplyChunk::SingleValue(None))
+                } else if raw.len() == 1 + VALUE_SIZE {
                     let mut ret = [0u8; VALUE_SIZE];
                     ret.copy_from_slice(&raw[1..1+VALUE_SIZE]);
-                    Ok(ReplyChunk::SingleValue(ret))
+                    Ok(ReplyChunk::SingleValue(Some(ret)))
+                } else {
+                    Err(ProtocolError::new("incorrect content length"))
                 }
             },
             NUMBER => {
@@ -310,10 +316,10 @@ mod test_reply_chunk {
         for _ in 0..10 {
             let value = Arc::new(gen_value());
             let chunk =
-                ReplyChunk::deserialize(ServerReplyChunk::SingleValue(value.clone()).serialize()).unwrap();
+                ReplyChunk::deserialize(ServerReplyChunk::SingleValue(Some(value.clone())).serialize()).unwrap();
             match chunk {
                 ReplyChunk::SingleValue(v) => {
-                    assert_eq!(v.to_vec(), value.to_vec())
+                    assert_eq!(v.unwrap().to_vec(), value.to_vec())
                 },
                 _ => panic!()
             }
@@ -345,7 +351,7 @@ mod test_reply_chunk {
                 pairs.push((key, value.clone()));
             }
             let chunk =
-                ReplyChunk::deserialize(ServerReplyChunk::KVPairs(pairs.to_owned()).serialize()).unwrap();
+                ReplyChunk::deserialize(ServerReplyChunk::KVPairs(&pairs.to_owned()).serialize()).unwrap();
             match chunk {
                 ReplyChunk::KVPairs(ps) => {
                     assert_eq!(ps.len(), pairs.len());

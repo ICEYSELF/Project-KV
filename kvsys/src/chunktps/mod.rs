@@ -5,9 +5,10 @@ use std::fmt::{Display, Formatter};
 use std::io::{Read, Write};
 
 const CHUNKTPS_MAGIC: [u8; 4] = [0xde, 0xad, 0xbe, 0xef];
-
 const CHUNKTPS_READER_OK: [u8; 5] = [0xde, 0xad, 0xbe, 0xef, 0xac];
 const CHUNKTPS_READER_TE: [u8; 5] = [0xca, 0xfe, 0xba, 0xbe, 0xff];
+
+pub const CHUNK_MAX_SIZE: usize = 65535;
 
 #[derive(Debug)]
 pub struct ChunktpsError {
@@ -60,7 +61,7 @@ impl ChunktpsConnection {
 
     pub fn write_chunk(&mut self, data: Vec<u8>) -> Result<(), Box<dyn Error>> {
         let size = data.len();
-        assert!(size <= 65535);
+        assert!(size <= CHUNK_MAX_SIZE);
         let size = [(size / 256) as u8, (size % 256) as u8];
 
         self.tcp_stream.write(&CHUNKTPS_MAGIC)?;
