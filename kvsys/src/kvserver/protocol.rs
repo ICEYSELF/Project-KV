@@ -2,6 +2,7 @@ pub const SCAN: u8 = b'S';
 pub const PUT: u8 = b'P';
 pub const GET: u8 = b'G';
 pub const DEL: u8 = b'D';
+pub const CLOSE: u8 = b'C';
 
 pub use crate::kvstorage::Key;
 pub use crate::kvstorage::Value;
@@ -12,11 +13,13 @@ pub enum Request {
     Scan(Key, Key),
     Put(Key, Value),
     Get(Key),
-    Del(Key)
+    Del(Key),
+    Close
 }
 
 impl Request {
     pub fn serialize(&self) -> Vec<u8> {
+        #[allow(unused_variables)]
         match self {
             Request::Scan(key1, key2) => {
                 unimplemented!()
@@ -28,6 +31,9 @@ impl Request {
                 unimplemented!()
             },
             Request::Del(key) => {
+                unimplemented!()
+            },
+            Request::Close => {
                 unimplemented!()
             }
         }
@@ -48,6 +54,7 @@ pub enum ServerReplyChunk {
     KVPairs(Vec<(Key, Arc<Value>)>)
 }
 
+#[allow(unused_variables)]
 impl ServerReplyChunk {
     pub fn serialize(&self) -> Vec<u8> {
         match self {

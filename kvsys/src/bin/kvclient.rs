@@ -1,12 +1,10 @@
 use std::net::TcpStream;
 use std::io;
-
-use env_logger;
-use log::{info, warn, error};
-use std::error::Error;
 use std::io::Write;
+use std::error::Error;
 
-fn mainloop(mut tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
+#[allow(unused_variables)]
+fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
         print!("kv-client> ");
         io::stdout().flush().unwrap();
@@ -29,8 +27,6 @@ fn mainloop(mut tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
                     eprintln!("size of key should be exactly 8 bytes");
                     continue;
                 }
-
-                let bytes: [u8; 8] = *bytes[0..8];
             },
             "put" => {
                 if parts.len() != 3 {
@@ -46,7 +42,6 @@ fn mainloop(mut tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
         }
 
     }
-    unreachable!()
 }
 
 fn main() {
@@ -58,7 +53,7 @@ fn main() {
     let mut ip_addr = String::new();
     io::stdin().read_line(&mut ip_addr).unwrap();
     match TcpStream::connect(ip_addr) {
-        Ok(mut tcp_stream) => {
+        Ok(tcp_stream) => {
             if let Err(e) = mainloop(tcp_stream) {
                 eprintln!("critical error occurred in client mainloop, client shutting down");
                 eprintln!("detailed error info: {}", e);
