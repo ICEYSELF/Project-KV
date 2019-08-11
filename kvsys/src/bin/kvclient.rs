@@ -3,6 +3,9 @@ use std::io;
 use std::io::Write;
 use std::error::Error;
 
+#[allow(unused_imports)]
+use kvsys::kvstorage::{KEY_SIZE, VALUE_SIZE};
+
 #[allow(unused_variables)]
 fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
     loop {
@@ -23,7 +26,7 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 }
 
                 let bytes = parts[1].as_bytes();
-                if bytes.len() != 8 {
+                if bytes.len() != KEY_SIZE {
                     eprintln!("size of key should be exactly 8 bytes");
                     continue;
                 }

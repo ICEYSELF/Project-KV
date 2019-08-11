@@ -9,8 +9,11 @@ use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
 use std::u64;
 
-pub type Key = [u8; 8];
-pub type Value = [u8; 256];
+pub const KEY_SIZE: usize = 8;
+pub const VALUE_SIZE: usize = 512;
+
+pub type Key = [u8; KEY_SIZE];
+pub type Value = [u8; VALUE_SIZE];
 type InternKey = u64;
 
 enum DiskLogMessage { Put(Key, Arc<Value>), Delete(Key), Shutdown }
@@ -23,7 +26,7 @@ pub struct KVStorage {
 }
 
 impl KVStorage {
-    fn format_value(value: &[u8; 256]) -> String {
+    fn format_value(value: &Value) -> String {
         let mut ret = String::new();
         for &n in value.iter() {
             ret.push_str(format!("{:x}", n).as_str());
@@ -55,10 +58,10 @@ impl KVStorage {
 
         let mut operate: [u8; 1] = [0];
         while log_file.read_exact(&mut operate).is_ok() {
-            let mut key: [u8; 8] = [0; 8];
+            let mut key = [0u8; KEY_SIZE];
             log_file.read_exact(&mut key)?;
             if operate[0] == b'P' {
-                let mut value: [u8; 256] = [0; 256];
+                let mut value = [0u8; VALUE_SIZE];
                 log_file.read_exact(&mut value)?;
                 mem_storage.insert(KVStorage::encode_key(&key), Some(Arc::new(value)));
             }
@@ -172,7 +175,7 @@ mod tests {
 
     #[test]
     fn test_encode_key() {
-        let flat: [u8; 8] = [0x40, 0x49, 0x0f, 0xd0, 0xca, 0xfe, 0xba, 0xbe];
+        let flat = [0x40u8, 0x49, 0x0f, 0xd0, 0xca, 0xfe, 0xba, 0xbe];
         let expected = 0x40490fd0cafebabeu64;
         let encoded = KVStorage::encode_key(&flat);
         assert_eq!(encoded, expected);
@@ -183,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_encode_key_2() {
-        let flat: [u8; 8] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x9a, 0x0e];
+        let flat = [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x9a, 0x0e];
         let expected = 0x3c9a0eu64;
         let encoded = KVStorage::encode_key(&flat);
         assert_eq!(encoded, expected);

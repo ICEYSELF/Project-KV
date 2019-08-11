@@ -78,7 +78,8 @@ pub fn run_server(config: KVServerConfig) {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
+fn handle_connection(mut _stream: TcpStream, _storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
+    /*
     let mut command = [0u8];
     stream.read_exact(&mut command)?;
     match command[0] {
@@ -121,4 +122,6 @@ fn handle_connection(mut stream: TcpStream, storage_engine: Arc<RwLock<KVStorage
             Ok(())
         }
     }
+    */
+    unimplemented!()
 }

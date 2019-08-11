@@ -4,8 +4,7 @@ pub const GET: u8 = b'G';
 pub const DEL: u8 = b'D';
 pub const CLOSE: u8 = b'C';
 
-pub use crate::kvstorage::Key;
-pub use crate::kvstorage::Value;
+pub use crate::kvstorage::{Key, Value, KEY_SIZE, VALUE_SIZE};
 
 use std::sync::Arc;
 use std::fmt;
@@ -75,42 +74,42 @@ impl Request {
         assert!(raw.len() > 0);
         match raw[0] {
             SCAN => {
-                if raw.len() != 17 {
+                if raw.len() != 1 + KEY_SIZE * 2 {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key1 = [0; 8];
-                    let mut key2 = [0; 8];
-                    key1.copy_from_slice(&raw[1..9]);
-                    key2.copy_from_slice(&raw[9..17]);
+                    let mut key1 = [0; KEY_SIZE];
+                    let mut key2 = [0; KEY_SIZE];
+                    key1.copy_from_slice(&raw[1..1+KEY_SIZE]);
+                    key2.copy_from_slice(&raw[1+ KEY_SIZE..1+KEY_SIZE*2]);
                     Ok(Request::Scan(key1, key2))
                 }
             },
             PUT => {
-                if raw.len() != 265 {
+                if raw.len() != 1 + KEY_SIZE + VALUE_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key = [0; 8];
-                    let mut value = [0; 256];
-                    key.copy_from_slice(&raw[1..9]);
-                    value.copy_from_slice(&raw[9..265]);
+                    let mut key = [0; KEY_SIZE];
+                    let mut value = [0; VALUE_SIZE];
+                    key.copy_from_slice(&raw[1..1+KEY_SIZE]);
+                    value.copy_from_slice(&raw[1+KEY_SIZE..1+KEY_SIZE+VALUE_SIZE]);
                     Ok(Request::Put(key, value))
                 }
             },
             GET => {
-                if raw.len() != 9 {
+                if raw.len() != 1 + KEY_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key = [0; 8];
-                    key.copy_from_slice(&raw[1..9]);
+                    let mut key = [0; KEY_SIZE];
+                    key.copy_from_slice(&raw[1..1+KEY_SIZE]);
                     Ok(Request::Get(key))
                 }
             },
             DEL => {
-                if raw.len() != 9 {
+                if raw.len() != 1 + KEY_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key = [0; 8];
-                    key.copy_from_slice(&raw[1..9]);
+                    let mut key = [0; KEY_SIZE];
+                    key.copy_from_slice(&raw[1..1+KEY_SIZE]);
                     Ok(Request::Del(key))
                 }
             },
@@ -145,8 +144,8 @@ impl ServerReplyChunk {
             ServerReplyChunk::Number(number) => {
                 let mut ret = vec![NUMBER];
                 let mut number = *number;
-                let mut arr = [0u8; 8];
-                for i in (0..8_usize).rev() {
+                let mut arr = [0u8; KEY_SIZE];
+                for i in (0..KEY_SIZE).rev() {
                     arr[i] = (number % 256) as u8;
                     number /= 256;
                 }
@@ -173,23 +172,23 @@ pub enum ReplyChunk {
 
 impl ReplyChunk {
     pub fn deserialize(raw: Vec<u8>) -> Result<Self, ProtocolError> {
-        assert!(raw.len() > 0);
+        assert!(!raw.is_empty());
         match raw[0] {
             SINGLE_VALUE => {
-                if raw.len() != 257 {
+                if raw.len() != 1 + VALUE_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut ret = [0u8; 256];
-                    ret.copy_from_slice(&raw[1..257]);
+                    let mut ret = [0u8; VALUE_SIZE];
+                    ret.copy_from_slice(&raw[1..1+VALUE_SIZE]);
                     Ok(ReplyChunk::SingleValue(ret))
                 }
             },
             NUMBER => {
-                if raw.len() != 9 {
+                if raw.len() != 1 + KEY_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
                     let mut ret = 0;
-                    for &byte in raw[1..9].iter() {
+                    for &byte in raw[1..1+KEY_SIZE].iter() {
                         ret *= 256;
                         ret += byte as usize;
                     }
@@ -197,15 +196,15 @@ impl ReplyChunk {
                 }
             },
             KV_PAIRS => {
-                if (raw.len() - 1) % 264 != 0 {
+                if (raw.len() - 1) % (KEY_SIZE + VALUE_SIZE) != 0 {
                     return Err(ProtocolError::new("incorrect content length"))
                 } else {
                     let mut ret = Vec::new();
-                    for i in (1..raw.len()).step_by(264) {
-                        let mut key = [0u8; 8];
-                        let mut value = [0u8; 256];
-                        key.copy_from_slice(&raw[i..i + 8]);
-                        value.copy_from_slice(&raw[i+8..i + 264]);
+                    for i in (1..raw.len()).step_by(KEY_SIZE + VALUE_SIZE) {
+                        let mut key = [0u8; KEY_SIZE];
+                        let mut value = [0u8; VALUE_SIZE];
+                        key.copy_from_slice(&raw[i..i + KEY_SIZE]);
+                        value.copy_from_slice(&raw[i+KEY_SIZE..i+KEY_SIZE+VALUE_SIZE]);
                         ret.push((key, value))
                     }
                     Ok(ReplyChunk::KVPairs(ret))
