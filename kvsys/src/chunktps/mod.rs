@@ -1,7 +1,6 @@
 use std::net::TcpStream;
 use std::error::Error;
 use std::fmt;
-use std::thread;
 use std::fmt::{Display, Formatter};
 use std::io::{Read, Write};
 
@@ -88,13 +87,14 @@ mod test {
 
     #[test]
     fn test_basic_rw() {
-        let data: [&[u8]; 7] = [
+        let data: [&[u8]; 8] = [
             b"this is the first message to send",
             b"deadbeef,cafebabe",
             b"       the   C O N N E C T I O N should have been established",
             b"cubical type theory and ice1000 are both perfect",
             b"Haskell considered harmful",
             b"\x32\x33\xff\xff\xfe\x7c\xde\xad\xbe\xef",
+            b"",
             b"this is the last message to send"
         ];
 

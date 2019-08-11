@@ -3,6 +3,7 @@ mod test {
     use kvsys::kvstorage::KVStorage;
     use std::fs;
 
+    // TODO this piece of utility function duplicates, remove duplicates whenever possible.
     fn gen_key() -> [u8; 8] {
         let mut ret = [0u8; 8];
         for v in ret.iter_mut() {
