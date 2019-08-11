@@ -78,7 +78,6 @@ pub fn run_server(config: KVServerConfig) {
     }
 }
 
-#[allow(unused_variables)]
 fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
     let mut chunktps = ChunktpsConnection::new(stream);
     loop {
@@ -111,5 +110,44 @@ fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) 
                 return Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test_server_handle_connection {
+    use crate::kvstorage::KVStorage;
+    use crate::util::{gen_key, gen_value};
+    use crate::chunktps::ChunktpsConnection;
+    use crate::kvserver::handle_connection;
+    use crate::kvserver::protocol::Request;
+
+    use std::sync::{Arc, RwLock};
+    use std::net::{TcpStream, TcpListener};
+    use std::{fs, thread};
+    use std::time::Duration;
+
+    #[test]
+    fn test_handle_put() {
+        let _ = fs::remove_file("test_put.kv");
+        let log_file = fs::File::create("test_put.kv").unwrap();
+        let storage_engine = Arc::new(RwLock::new(KVStorage::new(log_file)));
+        let storage_engine_clone = storage_engine.clone();
+        let t = thread::spawn(move || {
+            let tcp_listener = TcpListener::bind("127.0.0.1:1972").unwrap();
+            let (tcp_stream, _) = tcp_listener.accept().unwrap();
+            handle_connection(tcp_stream, storage_engine_clone).unwrap();
+        });
+
+        let key = gen_key();
+        let value = gen_value();
+
+        thread::sleep(Duration::from_secs(1));
+        let tcp_stream = TcpStream::connect("127.0.0.1:1972").unwrap();
+        let mut chunktps = ChunktpsConnection::new(tcp_stream);
+        chunktps.write_chunk(Request::Put(key, value).serialize()).unwrap();
+        chunktps.write_chunk(Request::Close.serialize()).unwrap();
+
+        t.join().unwrap();
+        assert_eq!(storage_engine.read().unwrap().get(&key).unwrap().to_vec(), value.to_vec());
     }
 }
