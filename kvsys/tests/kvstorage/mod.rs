@@ -13,8 +13,6 @@ mod test {
         kv.put(&key, &value);
 
         assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
-
-        kv.shutdown();
     }
 
     #[test]
@@ -26,14 +24,12 @@ mod test {
             let f = fs::File::create("test1.kv").unwrap();
             let mut kv = KVStorage::new(f);
             kv.put(&key, &value);
-            kv.shutdown();
         }
 
         {
             let f = fs::File::open("test1.kv").unwrap();
             let kv = KVStorage::from_existing_file(f).unwrap();
             assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
-            kv.shutdown();
         }
     }
 
@@ -57,8 +53,6 @@ mod test {
             let value = values[i];
             assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
         }
-
-        kv.shutdown();
     }
 
     #[test]
@@ -76,7 +70,6 @@ mod test {
                 values.push(value);
                 kv.put(&key, &value);
             }
-            kv.shutdown();
         }
 
         {
@@ -87,7 +80,6 @@ mod test {
                 let value = values[i];
                 assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
             }
-            kv.shutdown();
         }
     }
 
@@ -106,23 +98,24 @@ mod test {
                 keys.push(key);
                 if rand::random() {
                     values.push(Some(value));
+                    kv.put(&key, &value);
                 } else {
                     values.push(None);
                     keys_to_delete.push(key)
                 }
-                kv.put(&key, &value);
             }
 
             for key in keys_to_delete.iter() {
                 kv.delete(key);
             }
 
-            kv.shutdown();
+            eprintln!("{:?}", kv);
         }
 
         {
             let f = fs::File::open("test4.kv").unwrap();
             let kv = KVStorage::from_existing_file(f).unwrap();
+            eprintln!("{:?}", kv);
             for i in 0..255 {
                 let key = keys[i];
                 if let Some(value) = values[i] {
@@ -131,7 +124,6 @@ mod test {
                     assert!(kv.get(&key).is_none());
                 }
             }
-            kv.shutdown();
         }
     }
 }

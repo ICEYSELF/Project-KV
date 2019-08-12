@@ -21,8 +21,8 @@ enum DiskLogMessage { Put(Key, Arc<Value>), Delete(Key), Shutdown }
 #[allow(dead_code)]
 pub struct KVStorage {
     mem_storage: BTreeMap<InternKey, Option<Arc<Value>>>,
-    disk_log_thread: thread::JoinHandle<()>,
-    disk_log_sender: Mutex<mpsc::Sender<DiskLogMessage>>
+    disk_log_sender: Mutex<mpsc::Sender<DiskLogMessage>>,
+    disk_log_thread: Option<thread::JoinHandle<()>>
 }
 
 impl KVStorage {
@@ -47,10 +47,17 @@ impl Debug for KVStorage {
     }
 }
 
+impl Drop for KVStorage {
+    fn drop(&mut self) {
+        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Shutdown).unwrap();
+        self.disk_log_thread.take().unwrap().join().unwrap();
+    }
+}
+
 impl KVStorage {
     pub fn new(log_file: fs::File) -> Self {
         let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
-        KVStorage{ mem_storage: BTreeMap::new(), disk_log_thread: log_thread, disk_log_sender: Mutex::new(sender) }
+        KVStorage{ mem_storage: BTreeMap::new(), disk_log_sender: Mutex::new(sender), disk_log_thread: Some(log_thread) }
     }
 
     pub fn from_existing_file(mut log_file: fs::File) -> Result<Self, Box<dyn Error>> {
@@ -71,7 +78,7 @@ impl KVStorage {
         }
 
         let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
-        Ok(KVStorage{ mem_storage, disk_log_sender: Mutex::new(sender), disk_log_thread: log_thread })
+        Ok(KVStorage{ mem_storage, disk_log_sender: Mutex::new(sender), disk_log_thread: Some(log_thread) })
     }
 
     pub fn get(&self, key: &Key) -> Option<Arc<Value>> {
@@ -114,11 +121,6 @@ impl KVStorage {
                 (KVStorage::decode_key(*k), v.as_ref().unwrap().clone())
             })
             .collect::<Vec<_>>()
-    }
-
-    pub fn shutdown(self) {
-        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Shutdown).unwrap();
-        self.disk_log_thread.join().unwrap();
     }
 
     fn encode_key(flat: &Key) -> InternKey {
