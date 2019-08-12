@@ -100,7 +100,7 @@ fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> R
                 match reply {
                     ReplyChunk::KVPairs(kv_pairs) => {
                         for (key, value) in kv_pairs {
-                            println!("{:?} => {:?}", key, value)
+                            println!("{} => {}", key, value)
                         }
                     },
                     _ => return Err(Box::new(ClientError::new("unexpected reply chunk kind")))
@@ -112,9 +112,9 @@ fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> R
             match reply {
                 ReplyChunk::SingleValue(value ) => {
                     if let Some(value) = value {
-                        println!("{:?} => {:?}", key, value);
+                        println!("{} => {}", key, value);
                     } else {
-                        println!("{:?} => nil", key);
+                        println!("{} => nil", key);
                     }
                     Ok(())
                 }

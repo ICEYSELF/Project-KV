@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::fmt;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 use std::u64;
 
@@ -25,7 +25,7 @@ impl Debug for Key {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "KEY [")?;
         for byte in self.data.iter() {
-            write!(f, "{:2x}", byte)?;
+            write!(f, "{:02x}", byte)?;
         }
         write!(f, "]")?;
         Ok(())
@@ -36,10 +36,22 @@ impl Debug for Value {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "VALUE [")?;
         for byte in self.data.iter().take(8) {
-            write!(f, "{:2x}", byte)?;
+            write!(f, "{:02x}", byte)?;
         }
         write!(f, "..]")?;
         Ok(())
+    }
+}
+
+impl Display for Key {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{:?} ('{}')", self, String::from_utf8_lossy(&self.data))
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{:?} ('{}...')", self, String::from_utf8_lossy(&self.data[0..8]))
     }
 }
 
