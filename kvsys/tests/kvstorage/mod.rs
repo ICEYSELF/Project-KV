@@ -98,11 +98,11 @@ mod test {
                 keys.push(key);
                 if rand::random() {
                     values.push(Some(value));
-                    kv.put(&key, &value);
                 } else {
                     values.push(None);
                     keys_to_delete.push(key)
                 }
+                kv.put(&key, &value);
             }
 
             for key in keys_to_delete.iter() {
