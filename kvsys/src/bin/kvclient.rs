@@ -5,7 +5,7 @@ use std::error::Error;
 use std::fmt;
 
 use kvsys::chunktps::ChunktpsConnection;
-use kvsys::kvstorage::{KEY_SIZE, VALUE_SIZE, key_from_slice, value_from_slice, Key, Value};
+use kvsys::kvstorage::{KEY_SIZE, VALUE_SIZE, Key, Value};
 use kvsys::kvserver::protocol::{Request, ReplyChunk};
 
 #[derive(Debug)]
@@ -73,6 +73,14 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
 }
 
 fn parse_input(command: String) -> Result<Request, ClientError> {
+    let check_key_size = | slice | {
+        Key::from_slice_checked(slice).ok_or(ClientError::new("incorrect key size"))
+    };
+
+    let check_value_size = | slice | {
+        Value::from_slice_checked(slice).ok_or(ClientError::new("incorrect value size"))
+    };
+
     let parts = command.trim().split_whitespace().collect::<Vec<_>>();
     if parts.len() == 0 {
         return Err(ClientError::new("no command given!"))
@@ -82,7 +90,7 @@ fn parse_input(command: String) -> Result<Request, ClientError> {
             if parts.len() != 2 {
                 return Err(ClientError::new("`get` requires exactly 1 argument"))
             }
-            let key = check_key_size(parts[1].as_bytes())?;
+            let key = check_key_size(&parts[1].as_bytes())?;
             Ok(Request::Get(key))
         },
         "put" => {
@@ -120,21 +128,5 @@ fn parse_input(command: String) -> Result<Request, ClientError> {
         _ => {
             Err(ClientError::new("unknown command"))
         }
-    }
-}
-
-fn check_key_size(key_bytes: &[u8]) -> Result<Key, ClientError> {
-    if key_bytes.len() != KEY_SIZE {
-        Err(ClientError::new("incorrect key size"))
-    } else {
-        Ok(key_from_slice(key_bytes))
-    }
-}
-
-fn check_value_size(value_bytes: &[u8]) -> Result<Value, ClientError> {
-    if value_bytes.len() != VALUE_SIZE {
-        Err(ClientError::new("incorrect value size"))
-    } else {
-        Ok(value_from_slice(value_bytes))
     }
 }

@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::thread::JoinHandle;
+use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
 use std::u64;
@@ -12,23 +13,113 @@ use std::u64;
 pub const KEY_SIZE: usize = 8;
 pub const VALUE_SIZE: usize = 256;
 
-pub type Key = [u8; KEY_SIZE];
-pub type Value = [u8; VALUE_SIZE];
+#[derive(Copy, Clone)]
+pub struct Key {
+    pub data: [u8; KEY_SIZE]
+}
+
+#[derive(Copy, Clone)]
+pub struct Value {
+    pub data: [u8; VALUE_SIZE]
+}
+
+impl Debug for Key {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "KEY [")?;
+        for byte in self.data.iter() {
+            write!(f, "{:x}", byte)?;
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
+impl Debug for Value {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "VALUE [")?;
+        for byte in self.data.iter().take(8) {
+            write!(f, "{:x}", byte)?;
+        }
+        write!(f, "..]")?;
+        Ok(())
+    }
+}
+
+impl PartialEq for Key {
+    fn eq(&self, other: &Self) -> bool {
+        for (byte1, byte2) in self.data.iter().zip(other.data.iter()) {
+            if byte1 != byte2 {
+                return false
+            }
+        }
+        true
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        for (byte1, byte2) in self.data.iter().zip(other.data.iter()) {
+            if byte1 != byte2 {
+                return false
+            }
+        }
+        true
+    }
+}
+
+impl Eq for Key {
+}
+
+impl Eq for Value {
+}
+
+impl Key {
+    pub fn from_slice(slice: &[u8]) -> Self {
+        assert_eq!(slice.len(), KEY_SIZE);
+        let mut ret = [0; KEY_SIZE];
+        ret.copy_from_slice(slice);
+        Key { data: ret }
+    }
+
+    pub fn from_slice_checked(slice: &[u8]) -> Option<Self> {
+        if slice.len() != KEY_SIZE {
+            None
+        } else {
+            let mut ret = [0; KEY_SIZE];
+            ret.copy_from_slice(slice);
+            Some(Key { data: ret })
+        }
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        self.data.to_vec()
+    }
+}
+
+impl Value {
+    pub fn from_slice(slice: &[u8]) -> Self {
+        assert_eq!(slice.len(), VALUE_SIZE);
+        let mut ret = [0; VALUE_SIZE];
+        ret.copy_from_slice(slice);
+        Value { data: ret }
+    }
+
+    pub fn from_slice_checked(slice: &[u8]) -> Option<Self> {
+        if slice.len() != VALUE_SIZE {
+            None
+        } else {
+            let mut ret = [0; VALUE_SIZE];
+            ret.copy_from_slice(slice);
+            Some(Value { data: ret })
+        }
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        self.data.to_vec()
+    }
+}
+
 type InternKey = u64;
-
-pub fn key_from_slice(slice: &[u8]) -> Key {
-    assert_eq!(slice.len(), KEY_SIZE);
-    let mut ret = [0; KEY_SIZE];
-    ret.copy_from_slice(slice);
-    ret
-}
-
-pub fn value_from_slice(slice: &[u8]) -> Value {
-    assert_eq!(slice.len(), VALUE_SIZE);
-    let mut ret = [0; VALUE_SIZE];
-    ret.copy_from_slice(slice);
-    ret
-}
 
 enum DiskLogMessage { Put(Key, Arc<Value>), Delete(Key), Shutdown }
 
@@ -39,22 +130,12 @@ pub struct KVStorage {
     disk_log_thread: Option<thread::JoinHandle<()>>
 }
 
-impl KVStorage {
-    fn format_value(value: &Value) -> String {
-        let mut ret = String::new();
-        for &n in value.iter() {
-            ret.push_str(format!("{:x}", n).as_str());
-        }
-        ret
-    }
-}
-
 impl Debug for KVStorage {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "KV [")?;
         for (key, maybe_value) in self.mem_storage.iter() {
             if let Some(value) = maybe_value {
-                write!(f, "{} => {},", key, KVStorage::format_value(value))?;
+                write!(f, "{:?} => {:?},", key, value)?;
             }
         }
         write!(f, "]")
@@ -81,9 +162,11 @@ impl KVStorage {
         while log_file.read_exact(&mut operate).is_ok() {
             let mut key = [0u8; KEY_SIZE];
             log_file.read_exact(&mut key)?;
+            let key = Key::from_slice(&key);
             if operate[0] == b'P' {
                 let mut value = [0u8; VALUE_SIZE];
                 log_file.read_exact(&mut value)?;
+                let value = Value::from_slice(&value);
                 mem_storage.insert(KVStorage::encode_key(&key), Some(Arc::new(value)));
             }
             else if operate[0] == b'D' {
@@ -139,7 +222,7 @@ impl KVStorage {
 
     fn encode_key(flat: &Key) -> InternKey {
         unsafe {
-            let flat = flat as *const u8 as *const u64;
+            let flat = &flat.data as *const u8 as *const u64;
             u64::from_be(*flat)
         }
     }
@@ -147,7 +230,7 @@ impl KVStorage {
     fn decode_key(encoded: InternKey) -> Key {
         unsafe {
             let bytes = &(u64::to_be(encoded)) as *const u64 as *const [u8; 8];
-            *bytes
+            Key::from_slice(&(*bytes))
         }
     }
 
@@ -155,13 +238,13 @@ impl KVStorage {
         match message {
             DiskLogMessage::Put(key, value) => {
                 let mut ret = b"P".to_vec();
-                ret.append(&mut key.to_vec());
-                ret.append(&mut value.to_vec());
+                ret.append(&mut key.serialize());
+                ret.append(&mut value.serialize());
                 ret
             },
             DiskLogMessage::Delete(key) => {
                 let mut ret = b"D".to_vec();
-                ret.append(&mut key.to_vec());
+                ret.append(&mut key.serialize());
                 ret
             },
             DiskLogMessage::Shutdown => {
@@ -187,11 +270,12 @@ impl KVStorage {
 
 #[cfg(test)]
 mod tests {
-    use crate::kvstorage::KVStorage;
+    use crate::kvstorage::{KVStorage, Key, Value};
 
     #[test]
     fn test_encode_key() {
         let flat = [0x40u8, 0x49, 0x0f, 0xd0, 0xca, 0xfe, 0xba, 0xbe];
+        let flat = Key::from_slice(&flat);
         let expected = 0x40490fd0cafebabeu64;
         let encoded = KVStorage::encode_key(&flat);
         assert_eq!(encoded, expected);
@@ -203,6 +287,7 @@ mod tests {
     #[test]
     fn test_encode_key_2() {
         let flat = [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x9a, 0x0e];
+        let flat = Key::from_slice(&flat);
         let expected = 0x3c9a0eu64;
         let encoded = KVStorage::encode_key(&flat);
         assert_eq!(encoded, expected);

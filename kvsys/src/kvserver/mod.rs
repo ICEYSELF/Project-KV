@@ -125,6 +125,7 @@ mod test_server_handle_connection {
     use std::net::{TcpStream, TcpListener};
     use std::{fs, thread};
     use std::time::Duration;
+    use std::ops::Deref;
 
     #[test]
     fn test_handle_put() {
@@ -148,7 +149,7 @@ mod test_server_handle_connection {
         chunktps.write_chunk(Request::Close.serialize()).unwrap();
 
         t.join().unwrap();
-        assert_eq!(storage_engine.read().unwrap().get(&key).unwrap().to_vec(), value.to_vec());
+        assert_eq!(storage_engine.read().unwrap().get(&key).unwrap().data.to_vec(), value.data.to_vec());
     }
 
     #[test]
@@ -173,7 +174,7 @@ mod test_server_handle_connection {
         let reply = ReplyChunk::deserialize(chunktps.read_chunk().unwrap()).unwrap();
         match reply {
             ReplyChunk::SingleValue(v) => {
-                assert_eq!(v.unwrap().to_vec(), value.to_vec())
+                assert_eq!(v.unwrap(), value)
             },
             _ => panic!()
         }
@@ -215,7 +216,8 @@ mod test_server_handle_connection {
                 ReplyChunk::KVPairs(kv_pairs) => {
                     total_data += kv_pairs.len();
                     for (k, v) in kv_pairs.iter() {
-                        assert_eq!(storage_engine.read().unwrap().get(k).unwrap().to_vec(), v.to_vec());
+                        let value = storage_engine.read().unwrap().get(k).unwrap();
+                        assert_eq!(value.deref(), v);
                     }
                 },
                 _ => panic!()

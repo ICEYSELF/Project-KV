@@ -44,24 +44,24 @@ impl Request {
         match self {
             Request::Scan(key1, key2) => {
                 let mut ret = vec![SCAN];
-                ret.append(&mut key1.to_vec());
-                ret.append(&mut key2.to_vec());
+                ret.append(&mut key1.serialize());
+                ret.append(&mut key2.serialize());
                 ret
             },
             Request::Put(key, value) => {
                 let mut ret = vec![PUT];
-                ret.append(&mut key.to_vec());
-                ret.append(&mut value.to_vec());
+                ret.append(&mut key.serialize());
+                ret.append(&mut value.serialize());
                 ret
             },
             Request::Get(key) => {
                 let mut ret = vec![GET];
-                ret.append(&mut key.to_vec());
+                ret.append(&mut key.serialize());
                 ret
             },
             Request::Del(key) => {
                 let mut ret = vec![DEL];
-                ret.append(&mut key.to_vec());
+                ret.append(&mut key.serialize());
                 ret
             },
             Request::Close => {
@@ -77,10 +77,8 @@ impl Request {
                 if raw.len() != 1 + KEY_SIZE * 2 {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key1 = [0; KEY_SIZE];
-                    let mut key2 = [0; KEY_SIZE];
-                    key1.copy_from_slice(&raw[1..1+KEY_SIZE]);
-                    key2.copy_from_slice(&raw[1+ KEY_SIZE..1+KEY_SIZE*2]);
+                    let key1 = Key::from_slice(&raw[1..1+KEY_SIZE]);
+                    let key2 = Key::from_slice(&raw[1+KEY_SIZE..1+KEY_SIZE*2]);
                     Ok(Request::Scan(key1, key2))
                 }
             },
@@ -88,10 +86,8 @@ impl Request {
                 if raw.len() != 1 + KEY_SIZE + VALUE_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key = [0; KEY_SIZE];
-                    let mut value = [0; VALUE_SIZE];
-                    key.copy_from_slice(&raw[1..1+KEY_SIZE]);
-                    value.copy_from_slice(&raw[1+KEY_SIZE..1+KEY_SIZE+VALUE_SIZE]);
+                    let key = Key::from_slice(&raw[1..1+KEY_SIZE]);
+                    let value = Value::from_slice(&raw[1+KEY_SIZE..1+KEY_SIZE+VALUE_SIZE]);
                     Ok(Request::Put(key, value))
                 }
             },
@@ -99,8 +95,7 @@ impl Request {
                 if raw.len() != 1 + KEY_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key = [0; KEY_SIZE];
-                    key.copy_from_slice(&raw[1..1+KEY_SIZE]);
+                    let key = Key::from_slice(&raw[1..1+KEY_SIZE]);
                     Ok(Request::Get(key))
                 }
             },
@@ -108,8 +103,7 @@ impl Request {
                 if raw.len() != 1 + KEY_SIZE {
                     Err(ProtocolError::new("incorrect content length"))
                 } else {
-                    let mut key = [0; KEY_SIZE];
-                    key.copy_from_slice(&raw[1..1+KEY_SIZE]);
+                    let key = Key::from_slice(&raw[1..1+KEY_SIZE]);
                     Ok(Request::Del(key))
                 }
             },
@@ -139,7 +133,7 @@ impl ServerReplyChunk<'_> {
             ServerReplyChunk::SingleValue(value) => {
                 let mut ret = vec![SINGLE_VALUE];
                 if let Some(value) = value {
-                    ret.append(&mut value.to_vec());
+                    ret.append(&mut value.serialize());
                 }
                 ret
             },
@@ -157,8 +151,8 @@ impl ServerReplyChunk<'_> {
             ServerReplyChunk::KVPairs(pairs) => {
                 let mut ret = vec![KV_PAIRS];
                 for (key, value) in pairs.iter() {
-                    ret.append(&mut key.to_vec());
-                    ret.append(&mut value.to_vec());
+                    ret.append(&mut key.serialize());
+                    ret.append(&mut value.serialize());
                 }
                 ret
             }
@@ -182,8 +176,7 @@ impl ReplyChunk {
                 if raw.len() == 1 {
                   Ok(ReplyChunk::SingleValue(None))
                 } else if raw.len() == 1 + VALUE_SIZE {
-                    let mut ret = [0u8; VALUE_SIZE];
-                    ret.copy_from_slice(&raw[1..1+VALUE_SIZE]);
+                    let ret = Value::from_slice(&raw[1..1+VALUE_SIZE]);
                     Ok(ReplyChunk::SingleValue(Some(ret)))
                 } else {
                     Err(ProtocolError::new("incorrect content length"))
@@ -207,10 +200,8 @@ impl ReplyChunk {
                 } else {
                     let mut ret = Vec::new();
                     for i in (1..raw.len()).step_by(KEY_SIZE + VALUE_SIZE) {
-                        let mut key = [0u8; KEY_SIZE];
-                        let mut value = [0u8; VALUE_SIZE];
-                        key.copy_from_slice(&raw[i..i + KEY_SIZE]);
-                        value.copy_from_slice(&raw[i+KEY_SIZE..i+KEY_SIZE+VALUE_SIZE]);
+                        let key = Key::from_slice(&raw[i..i + KEY_SIZE]);
+                        let value = Value::from_slice(&raw[i+KEY_SIZE..i+KEY_SIZE+VALUE_SIZE]);
                         ret.push((key, value))
                     }
                     Ok(ReplyChunk::KVPairs(ret))
@@ -237,8 +228,8 @@ mod test_request {
             let req1 = Request::deserialize_from(req.serialize()).unwrap();
             match req1 {
                 Request::Scan(k1, k2) => {
-                    assert_eq!(k1.to_vec(), key1.to_vec());
-                    assert_eq!(k2.to_vec(), key2.to_vec());
+                    assert_eq!(k1, key1);
+                    assert_eq!(k2, key2);
                 },
                 _ => panic!()
             }
@@ -254,8 +245,8 @@ mod test_request {
             let req1 = Request::deserialize_from(req.serialize()).unwrap();
             match req1 {
                 Request::Put(k, v) => {
-                    assert_eq!(k.to_vec(), key.to_vec());
-                    assert_eq!(v.to_vec(), value.to_vec());
+                    assert_eq!(k, key);
+                    assert_eq!(v, value);
                 },
                 _ => panic!()
             }
@@ -270,7 +261,7 @@ mod test_request {
             let req1 = Request::deserialize_from(req.serialize()).unwrap();
             match req1 {
                 Request::Get(k) => {
-                    assert_eq!(k.to_vec(), key.to_vec());
+                    assert_eq!(k, key);
                 },
                 _ => panic!()
             }
@@ -285,7 +276,7 @@ mod test_request {
             let req1 = Request::deserialize_from(req.serialize()).unwrap();
             match req1 {
                 Request::Del(k) => {
-                    assert_eq!(k.to_vec(), key.to_vec());
+                    assert_eq!(k, key);
                 },
                 _ => panic!()
             }
@@ -310,6 +301,7 @@ mod test_reply_chunk {
     use crate::kvserver::protocol::{ReplyChunk, ServerReplyChunk};
     use crate::util::{gen_key, gen_value};
     use std::sync::Arc;
+    use std::ops::Deref;
 
     #[test]
     fn reply_serialize_single_value() {
@@ -319,7 +311,7 @@ mod test_reply_chunk {
                 ReplyChunk::deserialize(ServerReplyChunk::SingleValue(Some(value.clone())).serialize()).unwrap();
             match chunk {
                 ReplyChunk::SingleValue(v) => {
-                    assert_eq!(v.unwrap().to_vec(), value.to_vec())
+                    assert_eq!(v.unwrap(), *value)
                 },
                 _ => panic!()
             }
@@ -351,13 +343,13 @@ mod test_reply_chunk {
                 pairs.push((key, value.clone()));
             }
             let chunk =
-                ReplyChunk::deserialize(ServerReplyChunk::KVPairs(&pairs.to_owned()).serialize()).unwrap();
+                ReplyChunk::deserialize(ServerReplyChunk::KVPairs(&pairs).serialize()).unwrap();
             match chunk {
                 ReplyChunk::KVPairs(ps) => {
                     assert_eq!(ps.len(), pairs.len());
                     for ((k1, v1), (k2, v2)) in ps.iter().zip(pairs.iter()) {
-                        assert_eq!(k1.to_vec(), k2.to_vec());
-                        assert_eq!(v1.to_vec(), v2.to_vec());
+                        assert_eq!(k1, k2);
+                        assert_eq!(v1, v2.deref());
                     }
                 },
                 _ => panic!()

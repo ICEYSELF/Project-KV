@@ -3,6 +3,7 @@ mod test {
     use kvsys::kvstorage::KVStorage;
     use std::fs;
     use kvsys::util::{gen_key, gen_key_n, gen_value};
+    use std::ops::Deref;
 
     #[test]
     fn test_basic_rw() {
@@ -12,7 +13,7 @@ mod test {
         let (key, value) = (gen_key(), gen_value());
         kv.put(&key, &value);
 
-        assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
+        assert_eq!(kv.get(&key).unwrap().deref(), &value);
     }
 
     #[test]
@@ -29,7 +30,7 @@ mod test {
         {
             let f = fs::File::open("test1.kv").unwrap();
             let kv = KVStorage::from_existing_file(f).unwrap();
-            assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
+            assert_eq!(kv.get(&key).unwrap().deref(), &value);
         }
     }
 
@@ -51,7 +52,7 @@ mod test {
         for i in 0..255 {
             let key = keys[i];
             let value = values[i];
-            assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
+            assert_eq!(kv.get(&key).unwrap().deref(), &value);
         }
     }
 
@@ -78,7 +79,7 @@ mod test {
             for i in 0..255 {
                 let key = keys[i];
                 let value = values[i];
-                assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
+                assert_eq!(kv.get(&key).unwrap().deref(), &value);
             }
         }
     }
@@ -108,18 +109,15 @@ mod test {
             for key in keys_to_delete.iter() {
                 kv.delete(key);
             }
-
-            eprintln!("{:?}", kv);
         }
 
         {
             let f = fs::File::open("test4.kv").unwrap();
             let kv = KVStorage::from_existing_file(f).unwrap();
-            eprintln!("{:?}", kv);
             for i in 0..255 {
                 let key = keys[i];
                 if let Some(value) = values[i] {
-                    assert_eq!(kv.get(&key).unwrap().to_vec(), value.to_vec());
+                    assert_eq!(kv.get(&key).unwrap().deref(), &value);
                 } else {
                     assert!(kv.get(&key).is_none());
                 }

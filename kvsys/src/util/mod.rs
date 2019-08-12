@@ -6,13 +6,13 @@ pub fn gen_key() -> Key {
     for v in ret.iter_mut() {
         *v = rand::random();
     }
-    ret
+    Key::from_slice(&ret)
 }
 
 pub fn gen_key_n(n: u8) -> Key {
     let mut ret = [0u8; KEY_SIZE];
     ret[KEY_SIZE - 1] = n;
-    ret
+    Key::from_slice(&ret)
 }
 
 pub fn gen_value() -> Value {
@@ -20,5 +20,5 @@ pub fn gen_value() -> Value {
     for v in ret.iter_mut() {
         *v = rand::random();
     }
-    ret
+    Value::from_slice(&ret)
 }
