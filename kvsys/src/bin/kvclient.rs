@@ -4,7 +4,7 @@ use std::io::Write;
 use std::error::Error;
 use std::fmt;
 
-use kvsys::chunktps::ChunktpsConnection;
+use kvsys::chunktps::ChunktpConnection;
 use kvsys::kvstorage::{Key, Value};
 use kvsys::kvserver::protocol::{Request, ReplyChunk};
 
@@ -52,7 +52,7 @@ fn main() {
 }
 
 fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
-    let mut chunktps = ChunktpsConnection::new(tcp_stream);
+    let mut chunktps = ChunktpConnection::new(tcp_stream);
     loop {
         print!("kv-client> ");
         io::stdout().flush().unwrap();
@@ -71,7 +71,7 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> Result<(), Box<dyn Error>> {
+fn handle_server_reply(chunktps: &mut ChunktpConnection, request: Request) -> Result<(), Box<dyn Error>> {
     match request {
         Request::Close => {
             process::exit(0)

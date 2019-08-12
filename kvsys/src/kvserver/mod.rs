@@ -10,7 +10,7 @@ use std::sync::{Arc, RwLock};
 use crate::kvstorage::{KVStorage};
 use crate::threadpool::ThreadPool;
 use crate::kvserver::protocol::{Request, ServerReplyChunk, KV_PAIR_SERIALIZED_SIZE};
-use crate::chunktps::{ChunktpsConnection, CHUNK_MAX_SIZE};
+use crate::chunktps::{ChunktpConnection, CHUNK_MAX_SIZE};
 
 use log::{error, warn, info};
 use std::error::Error;
@@ -70,7 +70,7 @@ pub fn run_server(config: KVServerConfig) {
 }
 
 fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) -> Result<(), Box<dyn Error>> {
-    let mut chunktps = ChunktpsConnection::new(stream);
+    let mut chunktps = ChunktpConnection::new(stream);
     loop {
         match Request::deserialize_from(chunktps.read_chunk()?)? {
             Request::Get(key) => {
@@ -125,7 +125,7 @@ fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) 
 mod test_server_handle_connection {
     use crate::kvstorage::KVStorage;
     use crate::util::{gen_key, gen_value, gen_key_n};
-    use crate::chunktps::ChunktpsConnection;
+    use crate::chunktps::ChunktpConnection;
     use crate::kvserver::handle_connection;
     use crate::kvserver::protocol::{Request, ReplyChunk};
 
@@ -152,7 +152,7 @@ mod test_server_handle_connection {
 
         thread::sleep(Duration::from_secs(1));
         let tcp_stream = TcpStream::connect("127.0.0.1:1972").unwrap();
-        let mut chunktps = ChunktpsConnection::new(tcp_stream);
+        let mut chunktps = ChunktpConnection::new(tcp_stream);
         chunktps.write_chunk(Request::Put(key, value).serialize()).unwrap();
         let _ = chunktps.read_chunk();
         chunktps.write_chunk(Request::Close.serialize()).unwrap();
@@ -178,7 +178,7 @@ mod test_server_handle_connection {
 
         thread::sleep(Duration::from_secs(1));
         let tcp_stream = TcpStream::connect("127.0.0.1:2333").unwrap();
-        let mut chunktps = ChunktpsConnection::new(tcp_stream);
+        let mut chunktps = ChunktpConnection::new(tcp_stream);
         chunktps.write_chunk(Request::Get(key).serialize()).unwrap();
         let reply = ReplyChunk::deserialize(chunktps.read_chunk().unwrap()).unwrap();
         match reply {
@@ -211,7 +211,7 @@ mod test_server_handle_connection {
         });
         thread::sleep(Duration::from_secs(1));
         let tcp_stream = TcpStream::connect("127.0.0.1:4396").unwrap();
-        let mut chunktps = ChunktpsConnection::new(tcp_stream);
+        let mut chunktps = ChunktpConnection::new(tcp_stream);
         chunktps.write_chunk(Request::Scan(gen_key_n(0), gen_key_n(254)).serialize()).unwrap();
 
         let mut total_data = 0;
