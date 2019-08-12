@@ -15,56 +15,40 @@ use crate::chunktps::{ChunktpsConnection, CHUNK_MAX_SIZE};
 use log::{error, warn, info};
 use std::error::Error;
 
-fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
+fn create_storage_engine(config: &KVServerConfig) -> Result<Arc<RwLock<KVStorage>>, Box<dyn Error>> {
     let path = path::Path::new(&config.db_file);
     if path.exists() {
         let content;
         {
-            let file = fs::File::open(path).unwrap_or_else(|e| {
-                error!("failed opening or creating file {}", config.db_file);
-                error!("extra info: {}", e);
-                process::exit(1)
-            });
-            content = KVStorage::read_log_file(file).unwrap_or_else(|e| {
-                error!("failed opening or creating file {}", config.db_file);
-                error!("extra info: {}", e);
-                process::exit(1)
-            });
+            let file = fs::File::open(path)?;
+            content = KVStorage::read_log_file(file)?;
         }
-
         {
-            let file = fs::OpenOptions::new().write(true).append(true).open(path)
-                .unwrap_or_else(|e| {
-                    error!("failed opening or creating file {}", config.db_file);
-                    error!("extra info: {}", e);
-                    process::exit(1)
-                });
-            Arc::new(RwLock::new(KVStorage::with_content(content, file)))
+            let file = fs::OpenOptions::new().write(true).append(true).open(path)?;
+            Ok(Arc::new(RwLock::new(KVStorage::with_content(content, file))))
         }
     } else {
-        let file = fs::File::create(path).unwrap_or_else(|e| {
-            error!("failed opening or creating file {}", config.db_file);
-            error!("extra info: {}", e);
-            process::exit(1)
-        });
-        Arc::new(RwLock::new(KVStorage::new(file)))
+        let file = fs::File::create(path)?;
+        Ok(Arc::new(RwLock::new(KVStorage::new(file))))
     }
 }
 
-fn bind_tcp_listener(config: &KVServerConfig) -> TcpListener {
+fn bind_tcp_listener(config: &KVServerConfig) -> Result<TcpListener, Box<dyn Error>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], config.listen_port));
-    TcpListener::bind(&addr).unwrap_or_else(
-        | e | {
-            error!("failed binding to port {}", config.listen_port);
-            error!("extra info: {}", e);
-            process::exit(1)
-        }
-    )
+    Ok(TcpListener::bind(&addr)?)
 }
 
 pub fn run_server(config: KVServerConfig) {
-    let storage = create_storage_engine(&config);
-    let tcp_listener = bind_tcp_listener(&config);
+    let storage = create_storage_engine(&config).unwrap_or_else(
+        | e | {
+            error!("error occurred when creating storage engine: {}", e);
+            process::exit(1);
+        });
+    let tcp_listener = bind_tcp_listener(&config).unwrap_or_else(
+        | e | {
+            error!("error occurred when creating TCP listener: {}", e);
+            process::exit(1);
+        });
     let pool = ThreadPool::new(config.threads as usize);
 
     for stream in tcp_listener.incoming() {

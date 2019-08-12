@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::io::{Read, Write};
 use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::fmt;
@@ -25,7 +25,7 @@ impl Debug for Key {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "KEY [")?;
         for byte in self.data.iter() {
-            write!(f, "{:x}", byte)?;
+            write!(f, "{:2x}", byte)?;
         }
         write!(f, "]")?;
         Ok(())
@@ -36,7 +36,7 @@ impl Debug for Value {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "VALUE [")?;
         for byte in self.data.iter().take(8) {
-            write!(f, "{:x}", byte)?;
+            write!(f, "{:2x}", byte)?;
         }
         write!(f, "..]")?;
         Ok(())
