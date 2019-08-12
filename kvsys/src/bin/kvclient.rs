@@ -31,7 +31,7 @@ impl ClientError {
 fn main() {
     env_logger::init();
 
-    print!("KV storage client -- v0.1");
+    println!("KV storage client -- v0.1");
     print!("server IP:PORT to connect: ");
     io::stdout().flush().unwrap();
 
@@ -41,12 +41,12 @@ fn main() {
         Ok(tcp_stream) => {
             if let Err(e) = mainloop(tcp_stream) {
                 eprintln!("critical error occurred in client mainloop, client shutting down");
-                eprintln!("detailed error info: {}", e.description());
+                eprintln!("detailed error info: {}", e);
             }
         }
         Err(e) => {
             eprintln!("critical error occurred while opening TCP connection, client shutting down");
-            eprintln!("detailed error info: {}", e.description());
+            eprintln!("detailed error info: {}", e);
         }
     }
 }
@@ -65,7 +65,7 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
                 handle_server_reply(&mut chunktps, request)?;
             },
             Err(e) => {
-                eprintln!("{}", e.description())
+                eprintln!("{}", e)
             }
         }
     }
@@ -83,6 +83,10 @@ fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> R
                     println!("Ok, {} rows affected.", number);
                     Ok(())
                 },
+                ReplyChunk::Error => {
+                    eprintln!("deletion failed, server error");
+                    Ok(())
+                }
                 _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
             }
         },
@@ -92,7 +96,7 @@ fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> R
                 if chunk.len() == 0 {
                     return Ok(())
                 }
-                let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
+                let reply = ReplyChunk::deserialize(chunk)?;
                 match reply {
                     ReplyChunk::KVPairs(kv_pairs) => {
                         for (key, value) in kv_pairs {
@@ -113,13 +117,23 @@ fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> R
                         println!("{:?} => nil", key);
                     }
                     Ok(())
-                },
+                }
                 _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
             }
         },
         Request::Put(_, _) => {
-            println!("database updated successfully");
-            Ok(())
+            let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
+            match reply {
+                ReplyChunk::Success => {
+                    println!("data successfully inserted.");
+                    Ok(())
+                },
+                ReplyChunk::Error => {
+                    eprintln!("insertion failed, server error");
+                    Ok(())
+                }
+                _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
+            }
         }
     }
 

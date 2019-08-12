@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
-use std::{thread, fs};
-use std::sync::mpsc;
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::{Read, Write, Seek, SeekFrom};
 use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
-use std::thread::JoinHandle;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::u64;
 
 pub const KEY_SIZE: usize = 8;
@@ -142,13 +140,36 @@ impl Value {
 
 type InternKey = u64;
 
-enum DiskLogMessage { Put(Key, Arc<Value>), Delete(Key), Shutdown }
+const DISK_PUT: u8 = b'P';
+const DISK_DELETE: u8 = b'D';
+
+enum DiskLogMessage {
+    Put(Key, Arc<Value>),
+    Delete(Key)
+}
+
+impl DiskLogMessage {
+    pub fn serialize(&self) -> Vec<u8> {
+        match self{
+            DiskLogMessage::Put(key, value) => {
+                let mut ret = vec![DISK_PUT];
+                ret.append(&mut key.serialize());
+                ret.append(&mut value.serialize());
+                ret
+            },
+            DiskLogMessage::Delete(key) => {
+                let mut ret = vec![DISK_DELETE];
+                ret.append(&mut key.serialize());
+                ret
+            }
+        }
+    }
+}
 
 #[allow(dead_code)]
 pub struct KVStorage {
     mem_storage: BTreeMap<InternKey, Option<Arc<Value>>>,
-    disk_log_sender: Mutex<mpsc::Sender<DiskLogMessage>>,
-    disk_log_thread: Option<thread::JoinHandle<()>>
+    log_file: File
 }
 
 impl Debug for KVStorage {
@@ -163,67 +184,59 @@ impl Debug for KVStorage {
     }
 }
 
-impl Drop for KVStorage {
-    fn drop(&mut self) {
-        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Shutdown).unwrap();
-        self.disk_log_thread.take().unwrap().join().unwrap();
-    }
-}
-
 impl KVStorage {
-    pub fn new(log_file: fs::File) -> Self {
-        let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
-        KVStorage{ mem_storage: BTreeMap::new(), disk_log_sender: Mutex::new(sender), disk_log_thread: Some(log_thread) }
+    pub fn new(log_file: File) -> Self {
+        KVStorage{ mem_storage: BTreeMap::new(), log_file }
     }
 
-    pub fn from_existing_file(mut log_file: fs::File) -> Result<Self, Box<dyn Error>> {
+    pub fn from_existing_file(mut log_file: File) -> Result<Self, Box<dyn Error>> {
         let mut mem_storage = BTreeMap::new();
 
         let mut operate: [u8; 1] = [0];
+        log_file.seek(SeekFrom::Start(0))?;
         while log_file.read_exact(&mut operate).is_ok() {
             let mut key = [0u8; KEY_SIZE];
             log_file.read_exact(&mut key)?;
             let key = Key::from_slice(&key);
-            if operate[0] == b'P' {
+            if operate[0] == DISK_PUT {
                 let mut value = [0u8; VALUE_SIZE];
                 log_file.read_exact(&mut value)?;
                 let value = Value::from_slice(&value);
                 mem_storage.insert(key.encode(), Some(Arc::new(value)));
             }
-            else if operate[0] == b'D' {
+            else if operate[0] == DISK_DELETE {
                 mem_storage.remove(&key.encode());
             }
         }
 
-        let (sender, log_thread) = KVStorage::create_disk_logger(log_file);
-        Ok(KVStorage{ mem_storage, disk_log_sender: Mutex::new(sender), disk_log_thread: Some(log_thread) })
+        Ok(KVStorage{ mem_storage, log_file })
     }
 
     pub fn get(&self, key: &Key) -> Option<Arc<Value>> {
         let encoded_key = key.encode();
         if let Some(maybe_value) = self.mem_storage.get(&encoded_key) {
             (*maybe_value).clone()
-        }
-        else {
+        } else {
             None
         }
     }
 
-    pub fn put(&mut self, key: &Key, value: &Value) {
+    pub fn put(&mut self, key: &Key, value: &Value) -> Result<(), Box<dyn Error>>{
         let encoded_key = key.encode();
         let value = Arc::new(*value);
-        self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Put(*key, value.clone())).unwrap();
+        self.log_file.write(&DiskLogMessage::Put(*key, value.clone()).serialize())?;
         self.mem_storage.insert(encoded_key, Some(value));
+        Ok(())
     }
 
-    pub fn delete(&mut self, key: &Key) -> usize {
+    pub fn delete(&mut self, key: &Key) -> Result<usize, Box<dyn Error>> {
         let encoded_key = key.encode();
         if let Some(maybe_value) = self.mem_storage.get_mut(&encoded_key) {
-            self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Delete(*key)).unwrap();
+            self.log_file.write(&DiskLogMessage::Delete(*key).serialize())?;
             *maybe_value = None;
-            1
+            Ok(1)
         } else {
-            0
+            Ok(0)
         }
     }
 
@@ -240,44 +253,11 @@ impl KVStorage {
             })
             .collect::<Vec<_>>()
     }
-
-    fn serialize(message: &DiskLogMessage) -> Vec<u8> {
-        match message {
-            DiskLogMessage::Put(key, value) => {
-                let mut ret = b"P".to_vec();
-                ret.append(&mut key.serialize());
-                ret.append(&mut value.serialize());
-                ret
-            },
-            DiskLogMessage::Delete(key) => {
-                let mut ret = b"D".to_vec();
-                ret.append(&mut key.serialize());
-                ret
-            },
-            DiskLogMessage::Shutdown => {
-                unreachable!()
-            }
-        }
-    }
-
-    fn create_disk_logger(mut log_file: fs::File) -> (mpsc::Sender<DiskLogMessage>, JoinHandle<()>) {
-        let (sender, receiver) = mpsc::channel::<DiskLogMessage>();
-        let log_thread = thread::spawn(move || {
-            loop {
-                let message = receiver.recv().unwrap();
-                if let DiskLogMessage::Shutdown = message {
-                    break;
-                }
-                log_file.write(&KVStorage::serialize(&message)).unwrap();
-            }
-        });
-        (sender, log_thread)
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::kvstorage::{KVStorage, Key};
+    use crate::kvstorage::Key;
 
     #[test]
     fn test_encode_raw() {

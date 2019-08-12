@@ -19,13 +19,16 @@ fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
     let path = path::Path::new(&config.db_file);
     let is_existing = path.exists();
     let file = if is_existing {
-        fs::File::open(path)
+        fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(path)
     } else {
         fs::File::create(path)
     }.unwrap_or_else(
         | e | {
             error!("failed opening or creating file {}", config.db_file);
-            error!("extra info: {}", e.description());
+            error!("extra info: {}", e);
             process::exit(1)
         }
     );
@@ -33,7 +36,7 @@ fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
     let storage = if is_existing {
         KVStorage::from_existing_file(file).unwrap_or_else(| e | {
             error!("error setting up storage engine from existing file {}", config.db_file);
-            error!("extra info: {}", e.description());
+            error!("extra info: {}", e);
             error!("this is usually because you have a corrupted database file, or using a non-kv file");
             process::exit(1)
         })
@@ -49,7 +52,7 @@ fn bind_tcp_listener(config: &KVServerConfig) -> TcpListener {
     TcpListener::bind(&addr).unwrap_or_else(
         | e | {
             error!("failed binding to port {}", config.listen_port);
-            error!("extra info: {}", e.description());
+            error!("extra info: {}", e);
             process::exit(1)
         }
     )
@@ -62,7 +65,7 @@ pub fn run_server(config: KVServerConfig) {
 
     for stream in tcp_listener.incoming() {
         if let Err(e) = stream {
-            warn!("an TCP error occurred, extra info: {}", e.description());
+            warn!("an TCP error occurred, extra info: {}", e);
             info!("automatically gave up and moved to next iteration");
             break;
         }
@@ -72,7 +75,7 @@ pub fn run_server(config: KVServerConfig) {
         pool.execute(move || {
             if let Err(e) = handle_connection(stream, storage) {
                 warn!("an error occurred when processing request");
-                info!("detailed error info: {}", e.description());
+                info!("detailed error info: {}", e);
             }
         });
     }
@@ -87,11 +90,28 @@ fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) 
                 chunktps.write_chunk(ServerReplyChunk::SingleValue(maybe_value).serialize())?;
             },
             Request::Put(key, value) => {
-                storage_engine.write().unwrap().put(&key, &value);
+                match storage_engine.write().unwrap().put(&key, &value) {
+                    Ok(_) => {
+                        chunktps.write_chunk(ServerReplyChunk::Success.serialize())?;
+                    },
+                    Err(e) => {
+                        warn!("put operation failed");
+                        info!("detailed info: {}", e);
+                        chunktps.write_chunk(ServerReplyChunk::Error.serialize())?;
+                    }
+                }
             },
             Request::Del(key) => {
-                let rows_effected = storage_engine.write().unwrap().delete(&key);
-                chunktps.write_chunk(ServerReplyChunk::Number(rows_effected).serialize())?;
+                match storage_engine.write().unwrap().delete(&key) {
+                    Ok(rows_effected) => {
+                        chunktps.write_chunk(ServerReplyChunk::Number(rows_effected).serialize())?;
+                    },
+                    Err(e) => {
+                        warn!("delete operation failed");
+                        info!("detailed info: {}", e);
+                        chunktps.write_chunk(ServerReplyChunk::Error.serialize())?;
+                    }
+                }
             },
             Request::Scan(key1, key2) => {
                 const ROW_PER_CHUNK: usize = (CHUNK_MAX_SIZE - 1) / KV_PAIR_SERIALIZED_SIZE;
@@ -146,6 +166,7 @@ mod test_server_handle_connection {
         let tcp_stream = TcpStream::connect("127.0.0.1:1972").unwrap();
         let mut chunktps = ChunktpsConnection::new(tcp_stream);
         chunktps.write_chunk(Request::Put(key, value).serialize()).unwrap();
+        let _ = chunktps.read_chunk();
         chunktps.write_chunk(Request::Close.serialize()).unwrap();
 
         t.join().unwrap();
@@ -159,7 +180,7 @@ mod test_server_handle_connection {
         let storage_engine = Arc::new(RwLock::new(KVStorage::new(log_file)));
         let key = gen_key();
         let value = gen_value();
-        storage_engine.write().unwrap().put(&key, &value);
+        storage_engine.write().unwrap().put(&key, &value).unwrap();
         let storage_engine_clone = storage_engine.clone();
         let t = thread::spawn(move || {
             let tcp_listener = TcpListener::bind("127.0.0.1:2333").unwrap();
@@ -191,7 +212,7 @@ mod test_server_handle_connection {
         for i in 0..255 {
             let key = gen_key_n(i);
             let value = gen_value();
-            storage_engine.write().unwrap().put(&key, &value);
+            storage_engine.write().unwrap().put(&key, &value).unwrap();
         }
 
         let storage_engine_clone = storage_engine.clone();

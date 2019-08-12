@@ -120,11 +120,15 @@ impl Request {
 pub const SINGLE_VALUE: u8 = b'S';
 pub const NUMBER: u8 = b'N';
 pub const KV_PAIRS: u8 = b'P';
+pub const ERROR: u8 = b'E';
+pub const SUCCESS: u8 = b'A';
 
 pub enum ServerReplyChunk<'a> {
     SingleValue(Option<Arc<Value>>),
     Number(usize),
-    KVPairs(&'a [(Key, Arc<Value>)])
+    KVPairs(&'a [(Key, Arc<Value>)]),
+    Error,
+    Success
 }
 
 impl ServerReplyChunk<'_> {
@@ -155,6 +159,12 @@ impl ServerReplyChunk<'_> {
                     ret.append(&mut value.serialize());
                 }
                 ret
+            },
+            ServerReplyChunk::Success => {
+                vec![SUCCESS]
+            },
+            ServerReplyChunk::Error => {
+                vec![ERROR]
             }
         }
     }
@@ -163,7 +173,9 @@ impl ServerReplyChunk<'_> {
 pub enum ReplyChunk {
     SingleValue(Option<Value>),
     Number(usize),
-    KVPairs(Vec<(Key, Value)>)
+    KVPairs(Vec<(Key, Value)>),
+    Success,
+    Error
 }
 
 pub const KV_PAIR_SERIALIZED_SIZE: usize = KEY_SIZE + VALUE_SIZE;
@@ -207,6 +219,20 @@ impl ReplyChunk {
                     Ok(ReplyChunk::KVPairs(ret))
                 }
             },
+            SUCCESS => {
+                if raw.len() != 1 {
+                    Err(ProtocolError::new("incorrect content length"))
+                } else {
+                    Ok(ReplyChunk::Success)
+                }
+            }
+            ERROR => {
+                if raw.len() != 1 {
+                    Err(ProtocolError::new("incorrect content length"))
+                } else {
+                    Ok(ReplyChunk::Error)
+                }
+            }
             _ => {
                 Err(ProtocolError::new("incorrect reply chunk identifier"))
             }

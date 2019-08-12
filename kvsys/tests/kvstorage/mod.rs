@@ -11,7 +11,7 @@ mod test {
         let mut kv = KVStorage::new(f);
 
         let (key, value) = (gen_key(), gen_value());
-        kv.put(&key, &value);
+        kv.put(&key, &value).unwrap();
 
         assert_eq!(kv.get(&key).unwrap().deref(), &value);
     }
@@ -24,7 +24,7 @@ mod test {
         {
             let f = fs::File::create("test1.kv").unwrap();
             let mut kv = KVStorage::new(f);
-            kv.put(&key, &value);
+            kv.put(&key, &value).unwrap();
         }
 
         {
@@ -46,7 +46,7 @@ mod test {
             let (key, value) = (gen_key_n(i), gen_value());
             keys.push(key);
             values.push(value);
-            kv.put(&key, &value);
+            kv.put(&key, &value).unwrap();
         }
 
         for i in 0..255 {
@@ -69,7 +69,7 @@ mod test {
                 let (key, value) = (gen_key_n(i), gen_value());
                 keys.push(key);
                 values.push(value);
-                kv.put(&key, &value);
+                kv.put(&key, &value).unwrap();
             }
         }
 
@@ -103,11 +103,11 @@ mod test {
                     values.push(None);
                     keys_to_delete.push(key)
                 }
-                kv.put(&key, &value);
+                kv.put(&key, &value).unwrap();
             }
 
             for key in keys_to_delete.iter() {
-                kv.delete(key);
+                kv.delete(key).unwrap();
             }
         }
 
