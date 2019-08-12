@@ -94,6 +94,27 @@ impl Key {
     pub fn serialize(&self) -> Vec<u8> {
         self.data.to_vec()
     }
+
+    pub fn encode(&self) -> InternKey {
+        unsafe {
+            let flat = &self.data as *const u8 as *const u64;
+            u64::from_be(*flat)
+        }
+    }
+
+    pub fn encode_raw(raw: &[u8; KEY_SIZE]) -> InternKey {
+        unsafe {
+            let flat = raw as *const u8 as *const u64;
+            u64::from_be(*flat)
+        }
+    }
+
+    pub fn decode(encoded: InternKey) -> Self {
+        unsafe {
+            let bytes = &(u64::to_be(encoded)) as *const u64 as *const [u8; 8];
+            Key::from_slice(&(*bytes))
+        }
+    }
 }
 
 impl Value {
@@ -167,10 +188,10 @@ impl KVStorage {
                 let mut value = [0u8; VALUE_SIZE];
                 log_file.read_exact(&mut value)?;
                 let value = Value::from_slice(&value);
-                mem_storage.insert(KVStorage::encode_key(&key), Some(Arc::new(value)));
+                mem_storage.insert(key.encode(), Some(Arc::new(value)));
             }
             else if operate[0] == b'D' {
-                mem_storage.remove(&KVStorage::encode_key(&key));
+                mem_storage.remove(&key.encode());
             }
         }
 
@@ -179,7 +200,7 @@ impl KVStorage {
     }
 
     pub fn get(&self, key: &Key) -> Option<Arc<Value>> {
-        let encoded_key = KVStorage::encode_key(key);
+        let encoded_key = key.encode();
         if let Some(maybe_value) = self.mem_storage.get(&encoded_key) {
             (*maybe_value).clone()
         }
@@ -189,14 +210,14 @@ impl KVStorage {
     }
 
     pub fn put(&mut self, key: &Key, value: &Value) {
-        let encoded_key = KVStorage::encode_key(key);
+        let encoded_key = key.encode();
         let value = Arc::new(*value);
         self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Put(*key, value.clone())).unwrap();
         self.mem_storage.insert(encoded_key, Some(value));
     }
 
     pub fn delete(&mut self, key: &Key) -> usize {
-        let encoded_key = KVStorage::encode_key(key);
+        let encoded_key = key.encode();
         if let Some(maybe_value) = self.mem_storage.get_mut(&encoded_key) {
             self.disk_log_sender.lock().unwrap().send(DiskLogMessage::Delete(*key)).unwrap();
             *maybe_value = None;
@@ -207,7 +228,7 @@ impl KVStorage {
     }
 
     pub fn scan(&self, key1: &Key, key2: &Key) -> Vec<(Key, Arc<Value>)> {
-        let (encoded_key1, encoded_key2) = (KVStorage::encode_key(key1), KVStorage::encode_key(key2));
+        let (encoded_key1, encoded_key2) = (key1.encode(), key2.encode());
         self.mem_storage.range((Included(encoded_key1), Excluded(encoded_key2)))
             .filter(|x| {
                 let (_, v) = x;
@@ -215,23 +236,9 @@ impl KVStorage {
             })
             .map(|x| {
                 let (k, v) = x;
-                (KVStorage::decode_key(*k), v.as_ref().unwrap().clone())
+                (Key::decode(*k), v.as_ref().unwrap().clone())
             })
             .collect::<Vec<_>>()
-    }
-
-    fn encode_key(flat: &Key) -> InternKey {
-        unsafe {
-            let flat = &flat.data as *const u8 as *const u64;
-            u64::from_be(*flat)
-        }
-    }
-
-    fn decode_key(encoded: InternKey) -> Key {
-        unsafe {
-            let bytes = &(u64::to_be(encoded)) as *const u64 as *const [u8; 8];
-            Key::from_slice(&(*bytes))
-        }
     }
 
     fn serialize(message: &DiskLogMessage) -> Vec<u8> {
@@ -270,29 +277,28 @@ impl KVStorage {
 
 #[cfg(test)]
 mod tests {
-    use crate::kvstorage::{KVStorage, Key, Value};
+    use crate::kvstorage::{KVStorage, Key};
 
     #[test]
-    fn test_encode_key() {
+    fn test_encode_raw() {
         let flat = [0x40u8, 0x49, 0x0f, 0xd0, 0xca, 0xfe, 0xba, 0xbe];
-        let flat = Key::from_slice(&flat);
         let expected = 0x40490fd0cafebabeu64;
-        let encoded = KVStorage::encode_key(&flat);
+        let encoded = Key::encode_raw(&flat);
         assert_eq!(encoded, expected);
 
-        let decoded = KVStorage::decode_key(encoded);
-        assert_eq!(decoded, flat);
+        let decoded = Key::decode(encoded);
+        assert_eq!(decoded, Key::from_slice(&flat));
     }
 
     #[test]
-    fn test_encode_key_2() {
+    fn test_encode() {
         let flat = [0x00u8, 0x00, 0x00, 0x00, 0x00, 0x3c, 0x9a, 0x0e];
         let flat = Key::from_slice(&flat);
         let expected = 0x3c9a0eu64;
-        let encoded = KVStorage::encode_key(&flat);
+        let encoded = flat.encode();
         assert_eq!(encoded, expected);
 
-        let decoded = KVStorage::decode_key(encoded);
+        let decoded = Key::decode(encoded);
         assert_eq!(decoded, flat);
     }
 }
