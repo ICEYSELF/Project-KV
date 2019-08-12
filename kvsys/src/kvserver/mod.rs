@@ -116,7 +116,7 @@ fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) 
 #[cfg(test)]
 mod test_server_handle_connection {
     use crate::kvstorage::KVStorage;
-    use crate::util::{gen_key, gen_value};
+    use crate::util::{gen_key, gen_value, gen_key_n};
     use crate::chunktps::ChunktpsConnection;
     use crate::kvserver::handle_connection;
     use crate::kvserver::protocol::{Request, ReplyChunk};
@@ -177,6 +177,51 @@ mod test_server_handle_connection {
             },
             _ => panic!()
         }
+
+        chunktps.write_chunk(Request::Close.serialize()).unwrap();
+        t.join().unwrap();
+    }
+
+    #[test]
+    fn test_handle_scan() {
+        let _ = fs::remove_file("test_scan.kv");
+        let log_file = fs::File::create("test_scan.kv").unwrap();
+        let storage_engine = Arc::new(RwLock::new(KVStorage::new(log_file)));
+        for i in 0..255 {
+            let key = gen_key_n(i);
+            let value = gen_value();
+            storage_engine.write().unwrap().put(&key, &value);
+        }
+
+        let storage_engine_clone = storage_engine.clone();
+        let t = thread::spawn(move || {
+            let tcp_listener = TcpListener::bind("127.0.0.1:4396").unwrap();
+            let (tcp_stream, _) = tcp_listener.accept().unwrap();
+            handle_connection(tcp_stream, storage_engine_clone).unwrap();
+        });
+        thread::sleep(Duration::from_secs(1));
+        let tcp_stream = TcpStream::connect("127.0.0.1:4396").unwrap();
+        let mut chunktps = ChunktpsConnection::new(tcp_stream);
+        chunktps.write_chunk(Request::Scan(gen_key_n(0), gen_key_n(254)).serialize()).unwrap();
+
+        let mut total_data = 0;
+        loop {
+            let data = chunktps.read_chunk().unwrap();
+            if data.len() == 0 {
+                break;
+            }
+            let chunk = ReplyChunk::deserialize(data).unwrap();
+            match chunk {
+                ReplyChunk::KVPairs(kv_pairs) => {
+                    total_data += kv_pairs.len();
+                    for (k, v) in kv_pairs.iter() {
+                        assert_eq!(storage_engine.read().unwrap().get(k).unwrap().to_vec(), v.to_vec());
+                    }
+                },
+                _ => panic!()
+            }
+        }
+        assert_eq!(total_data, 254);
 
         chunktps.write_chunk(Request::Close.serialize()).unwrap();
         t.join().unwrap();

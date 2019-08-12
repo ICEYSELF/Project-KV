@@ -16,6 +16,20 @@ pub type Key = [u8; KEY_SIZE];
 pub type Value = [u8; VALUE_SIZE];
 type InternKey = u64;
 
+pub fn key_from_slice(slice: &[u8]) -> Key {
+    assert_eq!(slice.len(), KEY_SIZE);
+    let mut ret = [0; KEY_SIZE];
+    ret.copy_from_slice(slice);
+    ret
+}
+
+pub fn value_from_slice(slice: &[u8]) -> Value {
+    assert_eq!(slice.len(), VALUE_SIZE);
+    let mut ret = [0; VALUE_SIZE];
+    ret.copy_from_slice(slice);
+    ret
+}
+
 enum DiskLogMessage { Put(Key, Arc<Value>), Delete(Key), Shutdown }
 
 #[allow(dead_code)]

@@ -76,6 +76,7 @@ impl Worker {
                     Message::NewJob(job) => {
                         info!("worker {} got a job, executing", id);
                         job.call_box();
+                        info!("worker {} finished its job", id);
                     },
                     Message::Terminate => break
                 }
