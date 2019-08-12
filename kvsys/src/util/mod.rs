@@ -9,10 +9,8 @@ pub fn gen_key() -> Key {
     Key::from_slice(&ret)
 }
 
-pub fn gen_key_n(n: u8) -> Key {
-    let mut ret = [0u8; KEY_SIZE];
-    ret[KEY_SIZE - 1] = n;
-    Key::from_slice(&ret)
+pub fn gen_key_n(n: u64) -> Key {
+    Key::decode(n)
 }
 
 pub fn gen_value() -> Value {

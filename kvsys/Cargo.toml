@@ -17,6 +17,10 @@ name = "kvclient"
 name = "kvstorage_tests"
 path = "tests/kvstorage/mod.rs"
 
+[[test]]
+name = "kvserver_tests"
+path = "tests/kvserver/mod.rs"
+
 [dependencies]
 tempfile = "3"
 rand = "0.7.0"

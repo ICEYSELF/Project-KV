@@ -21,6 +21,11 @@ fn main() {
             .value_name("FILE")
             .help("Choose the file the server should write to or read from")
             .takes_value(true))
+        .arg(Arg::with_name("threads")
+            .short("t")
+            .long("threads")
+            .value_name("THREADS")
+            .takes_value(true))
         .get_matches();
 
     let config = KVServerConfig::from_arg_matches(matches);
