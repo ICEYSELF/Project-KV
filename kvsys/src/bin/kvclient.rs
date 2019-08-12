@@ -1,11 +1,11 @@
 use std::net::TcpStream;
-use std::io;
+use std::{io, process};
 use std::io::Write;
 use std::error::Error;
 use std::fmt;
 
 use kvsys::chunktps::ChunktpsConnection;
-use kvsys::kvstorage::{KEY_SIZE, VALUE_SIZE, Key, Value};
+use kvsys::kvstorage::{Key, Value};
 use kvsys::kvserver::protocol::{Request, ReplyChunk};
 
 #[derive(Debug)]
@@ -20,7 +20,6 @@ impl fmt::Display for ClientError {
 }
 
 impl Error for ClientError {
-
 }
 
 impl ClientError {
@@ -42,12 +41,12 @@ fn main() {
         Ok(tcp_stream) => {
             if let Err(e) = mainloop(tcp_stream) {
                 eprintln!("critical error occurred in client mainloop, client shutting down");
-                eprintln!("detailed error info: {}", e);
+                eprintln!("detailed error info: {}", e.description());
             }
         }
         Err(e) => {
             eprintln!("critical error occurred while opening TCP connection, client shutting down");
-            eprintln!("detailed error info: {}", e);
+            eprintln!("detailed error info: {}", e.description());
         }
     }
 }
@@ -63,7 +62,7 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
         match parse_input(command) {
             Ok(request) => {
                 chunktps.write_chunk(request.serialize())?;
-
+                handle_server_reply(&mut chunktps, request)?;
             },
             Err(e) => {
                 eprintln!("{}", e.description())
@@ -72,13 +71,75 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
     }
 }
 
+fn handle_server_reply(chunktps: &mut ChunktpsConnection, request: Request) -> Result<(), Box<dyn Error>> {
+    match request {
+        Request::Close => {
+            process::exit(0)
+        },
+        Request::Del(_) => {
+            let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
+            match reply {
+                ReplyChunk::Number(number ) => {
+                    println!("Ok, {} rows affected.", number);
+                    Ok(())
+                },
+                _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
+            }
+        },
+        Request::Scan(_, _) => {
+            loop {
+                let chunk = chunktps.read_chunk()?;
+                if chunk.len() == 0 {
+                    return Ok(())
+                }
+                let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
+                match reply {
+                    ReplyChunk::KVPairs(kv_pairs) => {
+                        for (key, value) in kv_pairs {
+                            println!("{:?} => {:?}", key, value)
+                        }
+                    },
+                    _ => return Err(Box::new(ClientError::new("unexpected reply chunk kind")))
+                }
+            }
+        },
+        Request::Get(key) => {
+            let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
+            match reply {
+                ReplyChunk::SingleValue(value ) => {
+                    if let Some(value) = value {
+                        println!("{:?} => {:?}", key, value);
+                    } else {
+                        println!("{:?} => nil", key);
+                    }
+                    Ok(())
+                },
+                _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
+            }
+        },
+        Request::Put(_, _) => {
+            println!("database updated successfully");
+            Ok(())
+        }
+    }
+
+}
+
 fn parse_input(command: String) -> Result<Request, ClientError> {
-    let check_key_size = | slice | {
+    let check_key_size = | slice: &[u8] | {
         Key::from_slice_checked(slice).ok_or(ClientError::new("incorrect key size"))
     };
 
-    let check_value_size = | slice | {
-        Value::from_slice_checked(slice).ok_or(ClientError::new("incorrect value size"))
+    let check_value_size = | slice: &[u8] | {
+        if slice.len() < 256 {
+            let mut ret = [0; 256];
+            for i in 0..slice.len() {
+                ret[i] = slice[i];
+            }
+            Ok(Value::from_slice(&ret))
+        } else {
+            Value::from_slice_checked(slice).ok_or(ClientError::new("incorrect value size"))
+        }
     };
 
     let parts = command.trim().split_whitespace().collect::<Vec<_>>();
