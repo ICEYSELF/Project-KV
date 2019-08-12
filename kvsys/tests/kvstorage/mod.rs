@@ -5,6 +5,19 @@ mod test {
     use kvsys::util::{gen_key, gen_key_n, gen_value};
     use std::ops::Deref;
 
+    fn from_existing_file(path: &str) -> KVStorage {
+        let content;
+        {
+            let f = fs::File::open(path).unwrap();
+            content = KVStorage::read_log_file(f).unwrap();
+        }
+
+        {
+            let f = fs::OpenOptions::new().write(true).append(true).open(path).unwrap();
+            KVStorage::with_content(content, f)
+        }
+    }
+
     #[test]
     fn test_basic_rw() {
         let f = tempfile::tempfile().unwrap();
@@ -28,8 +41,7 @@ mod test {
         }
 
         {
-            let f = fs::File::open("test1.kv").unwrap();
-            let kv = KVStorage::from_existing_file(f).unwrap();
+            let kv = from_existing_file("test1.kv");
             assert_eq!(kv.get(&key).unwrap().deref(), &value);
         }
     }
@@ -74,8 +86,7 @@ mod test {
         }
 
         {
-            let f = fs::File::open("test3.kv").unwrap();
-            let kv = KVStorage::from_existing_file(f).unwrap();
+            let kv = from_existing_file("test3.kv");
             for i in 0..255 {
                 let key = keys[i];
                 let value = values[i];
@@ -112,8 +123,7 @@ mod test {
         }
 
         {
-            let f = fs::File::open("test4.kv").unwrap();
-            let kv = KVStorage::from_existing_file(f).unwrap();
+            let kv = from_existing_file("test4.kv");
             for i in 0..255 {
                 let key = keys[i];
                 if let Some(value) = values[i] {

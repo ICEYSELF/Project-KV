@@ -17,34 +17,38 @@ use std::error::Error;
 
 fn create_storage_engine(config: &KVServerConfig) -> Arc<RwLock<KVStorage>> {
     let path = path::Path::new(&config.db_file);
-    let is_existing = path.exists();
-    let file = if is_existing {
-        fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(path)
+    if path.exists() {
+        let content;
+        {
+            let file = fs::File::open(path).unwrap_or_else(|e| {
+                error!("failed opening or creating file {}", config.db_file);
+                error!("extra info: {}", e);
+                process::exit(1)
+            });
+            content = KVStorage::read_log_file(file).unwrap_or_else(|e| {
+                error!("failed opening or creating file {}", config.db_file);
+                error!("extra info: {}", e);
+                process::exit(1)
+            });
+        }
+
+        {
+            let file = fs::OpenOptions::new().write(true).append(true).open(path)
+                .unwrap_or_else(|e| {
+                    error!("failed opening or creating file {}", config.db_file);
+                    error!("extra info: {}", e);
+                    process::exit(1)
+                });
+            Arc::new(RwLock::new(KVStorage::with_content(content, file)))
+        }
     } else {
-        fs::File::create(path)
-    }.unwrap_or_else(
-        | e | {
+        let file = fs::File::create(path).unwrap_or_else(|e| {
             error!("failed opening or creating file {}", config.db_file);
             error!("extra info: {}", e);
             process::exit(1)
-        }
-    );
-
-    let storage = if is_existing {
-        KVStorage::from_existing_file(file).unwrap_or_else(| e | {
-            error!("error setting up storage engine from existing file {}", config.db_file);
-            error!("extra info: {}", e);
-            error!("this is usually because you have a corrupted database file, or using a non-kv file");
-            process::exit(1)
-        })
-    } else {
-        KVStorage::new(file)
-    };
-
-    Arc::new(RwLock::new(storage))
+        });
+        Arc::new(RwLock::new(KVStorage::new(file)))
+    }
 }
 
 fn bind_tcp_listener(config: &KVServerConfig) -> TcpListener {

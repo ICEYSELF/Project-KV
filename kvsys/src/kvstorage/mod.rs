@@ -189,11 +189,10 @@ impl KVStorage {
         KVStorage{ mem_storage: BTreeMap::new(), log_file }
     }
 
-    pub fn from_existing_file(mut log_file: File) -> Result<Self, Box<dyn Error>> {
-        let mut mem_storage = BTreeMap::new();
+    pub fn read_log_file(mut log_file: File) -> Result<BTreeMap<InternKey, Option<Arc<Value>>>, Box<dyn Error>> {
+        let mut ret = BTreeMap::new();
 
         let mut operate: [u8; 1] = [0];
-        log_file.seek(SeekFrom::Start(0))?;
         while log_file.read_exact(&mut operate).is_ok() {
             let mut key = [0u8; KEY_SIZE];
             log_file.read_exact(&mut key)?;
@@ -202,14 +201,17 @@ impl KVStorage {
                 let mut value = [0u8; VALUE_SIZE];
                 log_file.read_exact(&mut value)?;
                 let value = Value::from_slice(&value);
-                mem_storage.insert(key.encode(), Some(Arc::new(value)));
+                ret.insert(key.encode(), Some(Arc::new(value)));
             }
             else if operate[0] == DISK_DELETE {
-                mem_storage.remove(&key.encode());
+                ret.remove(&key.encode());
             }
         }
+        Ok(ret)
+    }
 
-        Ok(KVStorage{ mem_storage, log_file })
+    pub fn with_content(mem_storage: BTreeMap<InternKey, Option<Arc<Value>>>, log_file: File) -> Self {
+        KVStorage{ mem_storage, log_file }
     }
 
     pub fn get(&self, key: &Key) -> Option<Arc<Value>> {
