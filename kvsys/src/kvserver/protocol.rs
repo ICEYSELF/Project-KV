@@ -1,16 +1,18 @@
-pub const SCAN: u8 = b'S';
-pub const PUT: u8 = b'P';
-pub const GET: u8 = b'G';
-pub const DEL: u8 = b'D';
-pub const CLOSE: u8 = b'C';
+//! Describes the protocol used by KV-Server and KV-Client
+//!
+//! The client should use the `Request` APIs to serialize its request, and then send it to server.
+//! The server will then make use of `Request` APIs to deserialize the request, use
+//! `ServerReplyChunk` APIs to serialize its reply chunks. The client can then use `ReplyChunk` APIs
+//! to deserialize a server reply chunk.
 
-pub use crate::kvstorage::{Key, Value, KEY_SIZE, VALUE_SIZE};
+use crate::kvstorage::{Key, Value, KEY_SIZE, VALUE_SIZE};
 
 use std::sync::Arc;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::error::Error;
 
+/// The error type used by protocol module
 #[derive(Debug)]
 pub struct ProtocolError {
     description: String
@@ -31,6 +33,19 @@ impl Display for ProtocolError {
 impl Error for ProtocolError {
 }
 
+/// Size of a `Key` - `Value` pair, basically an alias to `KEY_SIZE + VALUE_SIZE`.
+///
+/// The transmission protocol (for example, chunktp) may have limits on the data size. This
+/// constant can thus be used for "data per chunk" evaluation conveniently.
+pub const KV_PAIR_SERIALIZED_SIZE: usize = KEY_SIZE + VALUE_SIZE;
+
+const SCAN: u8 = b'S';
+const PUT: u8 = b'P';
+const GET: u8 = b'G';
+const DEL: u8 = b'D';
+const CLOSE: u8 = b'C';
+
+/// A request sent by client or received by server, see its enumerators for further information
 pub enum Request {
     Scan(Key, Key),
     Put(Key, Value),
@@ -40,6 +55,7 @@ pub enum Request {
 }
 
 impl Request {
+    /// Serialize a `Request` into a byte buffer
     pub fn serialize(&self) -> Vec<u8> {
         match self {
             Request::Scan(key1, key2) => {
@@ -70,6 +86,9 @@ impl Request {
         }
     }
 
+    /// Deserialize a byte buffer and construct a `Request` enum.
+    ///
+    /// Fails if the buffer does not meet the format of a `Request`, panics if the buffer is empty
     pub fn deserialize_from(raw: Vec<u8>) -> Result<Self, ProtocolError> {
         assert!(raw.len() > 0);
         match raw[0] {
@@ -117,12 +136,16 @@ impl Request {
     }
 }
 
-pub const SINGLE_VALUE: u8 = b'S';
-pub const NUMBER: u8 = b'N';
-pub const KV_PAIRS: u8 = b'P';
-pub const ERROR: u8 = b'E';
-pub const SUCCESS: u8 = b'A';
+const SINGLE_VALUE: u8 = b'S';
+const NUMBER: u8 = b'N';
+const KV_PAIRS: u8 = b'P';
+const ERROR: u8 = b'E';
+const SUCCESS: u8 = b'A';
 
+/// A reply chunk sent by server, see its enumerators for further information
+///
+/// The `ServerReplyChunk` is specially optimized for server side program to serialize and send
+/// data (without copying or blocking anything). To deserialize chunks, use `ReplyChunk` instead
 pub enum ServerReplyChunk<'a> {
     SingleValue(Option<Arc<Value>>),
     Number(usize),
@@ -132,6 +155,7 @@ pub enum ServerReplyChunk<'a> {
 }
 
 impl ServerReplyChunk<'_> {
+    /// Serialize a `ServerReplyBuffer` into a byte buffer
     pub fn serialize(&self) -> Vec<u8> {
         match self {
             ServerReplyChunk::SingleValue(value) => {
@@ -170,6 +194,10 @@ impl ServerReplyChunk<'_> {
     }
 }
 
+/// A reply chunk received by client, see its enumerators for further information
+///
+/// The `ReplyChunk` is specially created by client side program to deserialize and resolve reply
+/// data. To serialize chunks, use `ServerReplyChunk` instead
 pub enum ReplyChunk {
     SingleValue(Option<Value>),
     Number(usize),
@@ -178,9 +206,11 @@ pub enum ReplyChunk {
     Error
 }
 
-pub const KV_PAIR_SERIALIZED_SIZE: usize = KEY_SIZE + VALUE_SIZE;
-
 impl ReplyChunk {
+    /// Deserialize a byte buffer and construct a `ReplyChunk` enum.
+    ///
+    /// Fails if the buffer does not meet the format of a `ReplyChunk`,
+    /// panics if the buffer is empty
     pub fn deserialize(raw: Vec<u8>) -> Result<Self, ProtocolError> {
         assert!(!raw.is_empty());
         match raw[0] {

@@ -25,7 +25,7 @@
 //!     let kv;
 //!     {
 //!         let f = File::open("data.kv").unwrap();
-//!         content = KVStorage::read_log_file(f);
+//!         content = KVStorage::read_log_file(f).unwrap();
 //!     }
 //!     {
 //!         let f = OpenOptions::new().write(true).append(true).open("data.kv").unwrap();

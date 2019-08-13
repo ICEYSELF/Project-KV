@@ -1,7 +1,8 @@
+//! This part will get changed soon
+
 pub mod config;
 pub mod protocol;
 pub use config::KVServerConfig;
-pub use protocol::{SCAN, PUT, GET, DEL};
 
 use std::{fs, path, process};
 use std::net::{TcpListener, SocketAddr, TcpStream};

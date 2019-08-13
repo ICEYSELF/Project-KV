@@ -1,3 +1,8 @@
+//! The configuration info for a server
+//!
+//! a `KVServerConfig` can be constructed with either default value (for test use) or a
+//! `clap::ArgMatches` (for CLI program use). The configuration can then be passed and used.
+
 use clap::{ArgMatches, value_t};
 use log::info;
 
@@ -5,6 +10,7 @@ const DEFAULT_FILENAME: &str = "data.kv";
 const DEFAULT_LISTEN_PORT: u16 = 1926;
 const DEFAULT_THREADS: u16 = 4;
 
+/// Configuration info needed for running a KV server, see its field for futher information
 pub struct KVServerConfig {
     pub db_file: String,
     pub listen_port: u16,
@@ -12,6 +18,7 @@ pub struct KVServerConfig {
 }
 
 impl KVServerConfig {
+    /// Creates a `KVServerConfig` using default value
     pub fn from_default() -> Self {
         KVServerConfig {
             db_file: DEFAULT_FILENAME.to_owned(),
@@ -19,6 +26,10 @@ impl KVServerConfig {
             threads: DEFAULT_THREADS }
     }
 
+    /// Creates a `KVServerConfig` from command line arguments (`clap::ArgMatches`).
+    ///
+    /// If there are some formal parameters missing from the command line argument, this function will generate some
+    /// `Info` level log information.
     pub fn from_arg_matches(matches: ArgMatches) -> Self {
         let db_file = value_t!(matches, "dbfile", String).unwrap_or_else(|_| {
                 info!("no valid dbfile provided from commandline, using default file name '{}'", DEFAULT_FILENAME);
