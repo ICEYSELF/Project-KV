@@ -1,4 +1,4 @@
-//! This part will get changed soon
+//! Server API of Project-KV
 
 pub mod config;
 pub mod protocol;
@@ -7,6 +7,7 @@ pub use config::KVServerConfig;
 use std::{fs, path, process};
 use std::net::{TcpListener, SocketAddr, TcpStream};
 use std::sync::{Arc, RwLock};
+use std::error::Error;
 
 use crate::kvstorage::{KVStorage};
 use crate::threadpool::ThreadPool;
@@ -14,31 +15,9 @@ use crate::kvserver::protocol::{Request, ServerReplyChunk, KV_PAIR_SERIALIZED_SI
 use crate::chunktps::{ChunktpConnection, CHUNK_MAX_SIZE};
 
 use log::{error, warn, info};
-use std::error::Error;
 
-fn create_storage_engine(config: &KVServerConfig) -> Result<Arc<RwLock<KVStorage>>, Box<dyn Error>> {
-    let path = path::Path::new(&config.db_file);
-    if path.exists() {
-        let content;
-        {
-            let file = fs::File::open(path)?;
-            content = KVStorage::read_log_file(file)?;
-        }
-        {
-            let file = fs::OpenOptions::new().write(true).append(true).open(path)?;
-            Ok(Arc::new(RwLock::new(KVStorage::with_content(content, file))))
-        }
-    } else {
-        let file = fs::File::create(path)?;
-        Ok(Arc::new(RwLock::new(KVStorage::new(file))))
-    }
-}
-
-fn bind_tcp_listener(config: &KVServerConfig) -> Result<TcpListener, Box<dyn Error>> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], config.listen_port));
-    Ok(TcpListener::bind(&addr)?)
-}
-
+/// Starts a KV server with given configuration. This function also blocks the current thread, and
+/// currently there is no way to recover.
 pub fn run_server(config: KVServerConfig) {
     let storage = create_storage_engine(&config).unwrap_or_else(
         | e | {
@@ -120,6 +99,29 @@ fn handle_connection(stream: TcpStream, storage_engine: Arc<RwLock<KVStorage>>) 
             }
         }
     }
+}
+
+fn create_storage_engine(config: &KVServerConfig) -> Result<Arc<RwLock<KVStorage>>, Box<dyn Error>> {
+    let path = path::Path::new(&config.db_file);
+    if path.exists() {
+        let content;
+        {
+            let file = fs::File::open(path)?;
+            content = KVStorage::read_log_file(file)?;
+        }
+        {
+            let file = fs::OpenOptions::new().write(true).append(true).open(path)?;
+            Ok(Arc::new(RwLock::new(KVStorage::with_content(content, file))))
+        }
+    } else {
+        let file = fs::File::create(path)?;
+        Ok(Arc::new(RwLock::new(KVStorage::new(file))))
+    }
+}
+
+fn bind_tcp_listener(config: &KVServerConfig) -> Result<TcpListener, Box<dyn Error>> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], config.listen_port));
+    Ok(TcpListener::bind(&addr)?)
 }
 
 #[cfg(test)]
