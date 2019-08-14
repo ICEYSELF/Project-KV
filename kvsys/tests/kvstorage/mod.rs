@@ -1,9 +1,10 @@
 #[cfg(test)]
 mod test {
     use kvsys::kvstorage::KVStorage;
-    use std::fs;
+    use std::{fs, thread};
     use kvsys::util::{gen_key, gen_key_n, gen_value};
     use std::ops::Deref;
+    use std::sync::{Arc, RwLock};
 
     fn from_existing_file(path: &str) -> KVStorage {
         let content;
@@ -132,6 +133,63 @@ mod test {
                     assert!(kv.get(&key).is_none());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_multi_thread_rw() {
+        let _ = fs::remove_file("test5.kv");
+        let f = fs::File::create("test4.kv").unwrap();
+        let mut kv = KVStorage::new(f);
+        let mut values1 = Vec::new();
+        let mut values2 = Vec::new();
+
+        for _ in 0..65536 {
+            values1.push(gen_value());
+            values2.push(gen_value());
+        }
+        for i in 0..65536 {
+            kv.put(&gen_key_n(i), &values1[i as usize]).unwrap();
+        }
+
+        let kv = Arc::new(RwLock::new(kv));
+        let values1 = Arc::new(RwLock::new(values1));
+        let values2 = Arc::new(RwLock::new(values2));
+
+        let mut readers = Vec::new();
+        for _ in 0..4 {
+            let kv = kv.clone();
+            let values1 = values1.clone();
+            let values2 = values2.clone();
+            let reader = thread::spawn(move || {
+                for i in 0..65536 {
+                    let value = kv.read().unwrap().get(&gen_key_n(i)).unwrap();
+                    assert!(value.deref() == values1.read().unwrap().get(i as usize).unwrap()
+                            || value.deref() == values2.read().unwrap().get(i as usize).unwrap());
+                }
+            });
+            readers.push(reader);
+        }
+        let writer;
+        {
+            let kv = kv.clone();
+            let values2 = values2.clone();
+            writer = thread::spawn(move || {
+                for i in 0..65536 {
+                    kv.write().unwrap().put(&gen_key_n(i),
+                                            values2.read().unwrap().get(i as usize).unwrap()).unwrap();
+                }
+            });
+        }
+
+        for reader in readers {
+            let _ = reader.join();
+        }
+        let _ = writer.join();
+
+        for i in 0..65536 {
+            let value = kv.read().unwrap().get(&gen_key_n(i)).unwrap();
+            assert!(value.deref() == values2.read().unwrap().get(i as usize).unwrap());
         }
     }
 }
