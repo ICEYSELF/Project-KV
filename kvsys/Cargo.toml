@@ -21,12 +21,19 @@ path = "tests/kvstorage/mod.rs"
 name = "kvserver_tests"
 path = "tests/kvserver/mod.rs"
 
+[[bench]]
+name = "kvstorage_benches"
+path = "benches/kvstorage/mod.rs"
+
 [dependencies]
 tempfile = "3"
 rand = "0.7.0"
 clap = "2.33.0"
 log = "0.4"
 env_logger = "0.6.2"
+
+# This library is proved to be bullshit
+# criterion = "0.2.11"
 
 # This library is proved to be bullshit
 # threads_pool = "0.2.2"

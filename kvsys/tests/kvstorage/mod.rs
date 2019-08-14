@@ -139,7 +139,7 @@ mod test {
     #[test]
     fn test_multi_thread_rw() {
         let _ = fs::remove_file("test5.kv");
-        let f = fs::File::create("test4.kv").unwrap();
+        let f = fs::File::create("test5.kv").unwrap();
         let mut kv = KVStorage::new(f);
         let mut values1 = Vec::new();
         let mut values2 = Vec::new();
