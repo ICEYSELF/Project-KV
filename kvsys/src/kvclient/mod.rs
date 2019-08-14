@@ -111,6 +111,11 @@ impl KVClient {
     /// }
     /// ```
     ///
+    /// Please note that the callback function will be called for multiple times, once per chunk
+    /// received; and if an error occured in one of the chunks, `do_scan` will immediately return
+    /// an `Err`, without rollback or further processing. Please avoid write codes with strong
+    /// side effects, for example, interacting with anther database.
+    ///
     /// Returns `Err` if TCP connection fails or Chunktp fails
     pub fn do_scan<F, T>(&mut self, key1: Key, key2: Key, chunk_handler: F) -> Result<Vec<T>, Box<dyn Error>>
         where F: Fn(Vec<(Key, Value)>) -> T {

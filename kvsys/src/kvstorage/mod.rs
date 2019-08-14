@@ -40,13 +40,13 @@ pub mod disklog;
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{Read, Write};
 use std::ops::Bound::{Included, Excluded};
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 use std::u64;
+use crate::kvstorage::disklog::{DiskLogWriter, DiskLogReader, DiskLogMessage};
 
 pub const KEY_SIZE: usize = 8;
 pub const VALUE_SIZE: usize = 256;
@@ -134,7 +134,8 @@ impl Key {
         Key { data: ret }
     }
 
-    /// Construct a `Key` from a slice. Returns `None` if length of the given slice is not `KEY_SIZE`
+    /// Construct a `Key` from a slice. Returns `None` if length of the given slice is not
+    /// `KEY_SIZE`
     pub fn from_slice_checked(slice: &[u8]) -> Option<Self> {
         if slice.len() != KEY_SIZE {
             None
@@ -145,7 +146,7 @@ impl Key {
         }
     }
 
-    /// Serialize a `Key` into a `Vec<u8>`
+    /// Serialize a `Key` into a byte buffer
     pub fn serialize(&self) -> Vec<u8> {
         self.data.to_vec()
     }
@@ -203,6 +204,7 @@ impl Value {
         }
     }
 
+    /// Serialize a `Value` into a byte buffer
     pub fn serialize(&self) -> Vec<u8> {
         self.data.to_vec()
     }
@@ -210,44 +212,10 @@ impl Value {
 
 type InternKey = u64;
 
-// Disk log format
-//  -- 1 byte functionality
-//     'P': put
-//      -- KEY_SIZE bytes key
-//      -- VALUE_SIZE bytes value
-//     'D': delete
-//      -- KEY_SIZE bytes key
-
-const DISK_PUT: u8 = b'P';
-const DISK_DELETE: u8 = b'D';
-
-enum DiskLogMessage {
-    Put(Key, Arc<Value>),
-    Delete(Key)
-}
-
-impl DiskLogMessage {
-    pub fn serialize(&self) -> Vec<u8> {
-        match self{
-            DiskLogMessage::Put(key, value) => {
-                let mut ret = vec![DISK_PUT];
-                ret.append(&mut key.serialize());
-                ret.append(&mut value.serialize());
-                ret
-            },
-            DiskLogMessage::Delete(key) => {
-                let mut ret = vec![DISK_DELETE];
-                ret.append(&mut key.serialize());
-                ret
-            }
-        }
-    }
-}
-
 /// A Key-Value storage engine
 pub struct KVStorage {
     mem_storage: BTreeMap<InternKey, Option<Arc<Value>>>,
-    log_file: File
+    log_writer: disklog::DiskLogWriter
 }
 
 impl Debug for KVStorage {
@@ -265,26 +233,21 @@ impl Debug for KVStorage {
 impl KVStorage {
     /// Create a `KVStorage` using given `log_file` as its log output
     pub fn new(log_file: File) -> Self {
-        KVStorage{ mem_storage: BTreeMap::new(), log_file }
+        KVStorage{ mem_storage: BTreeMap::new(), log_writer: DiskLogWriter::new(log_file) }
     }
 
     /// Reads `log_file` and constructs a memory storage. This API looks bogus, but let us keep it for a while
-    pub fn read_log_file(mut log_file: File) -> Result<BTreeMap<InternKey, Option<Arc<Value>>>, Box<dyn Error>> {
+    pub fn read_log_file(log_file: File) -> Result<BTreeMap<InternKey, Option<Arc<Value>>>, Box<dyn Error>> {
         let mut ret = BTreeMap::new();
-
-        let mut operate: [u8; 1] = [0];
-        while log_file.read_exact(&mut operate).is_ok() {
-            let mut key = [0u8; KEY_SIZE];
-            log_file.read_exact(&mut key)?;
-            let key = Key::from_slice(&key);
-            if operate[0] == DISK_PUT {
-                let mut value = [0u8; VALUE_SIZE];
-                log_file.read_exact(&mut value)?;
-                let value = Value::from_slice(&value);
-                ret.insert(key.encode(), Some(Arc::new(value)));
-            }
-            else if operate[0] == DISK_DELETE {
-                ret.remove(&key.encode());
+        let mut log_reader = DiskLogReader::new(log_file);
+        while let Some(log_msg) = log_reader.next_log()? {
+            match log_msg {
+                DiskLogMessage::Put(key, value) => {
+                    ret.insert(key.encode(), Some(value));
+                },
+                DiskLogMessage::Delete(key) => {
+                    ret.remove(&key.encode());
+                }
             }
         }
         Ok(ret)
@@ -292,7 +255,7 @@ impl KVStorage {
 
     /// Create a `KVStorage` using given `log_file` as its log output, and with existing data `mem_storage`
     pub fn with_content(mem_storage: BTreeMap<InternKey, Option<Arc<Value>>>, log_file: File) -> Self {
-        KVStorage{ mem_storage, log_file }
+        KVStorage{ mem_storage, log_writer: DiskLogWriter::new(log_file) }
     }
 
     /// Trying get the value corresponding to the given `key`, returns `None` if not found
@@ -310,7 +273,7 @@ impl KVStorage {
     pub fn put(&mut self, key: &Key, value: &Value) -> Result<(), Box<dyn Error>>{
         let encoded_key = key.encode();
         let value = Arc::new(*value);
-        self.log_file.write(&DiskLogMessage::Put(*key, value.clone()).serialize())?;
+        self.log_writer.write(DiskLogMessage::Put(*key, value.clone()))?;
         self.mem_storage.insert(encoded_key, Some(value));
         Ok(())
     }
@@ -320,7 +283,7 @@ impl KVStorage {
     pub fn delete(&mut self, key: &Key) -> Result<usize, Box<dyn Error>> {
         let encoded_key = key.encode();
         if let Some(maybe_value) = self.mem_storage.get_mut(&encoded_key) {
-            self.log_file.write(&DiskLogMessage::Delete(*key).serialize())?;
+            self.log_writer.write(DiskLogMessage::Delete(*key))?;
             *maybe_value = None;
             Ok(1)
         } else {
