@@ -26,7 +26,6 @@ impl ClientError {
     }
 }
 
-
 fn main() {
     env_logger::init();
 
