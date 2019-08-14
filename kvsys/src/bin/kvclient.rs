@@ -1,15 +1,13 @@
 use std::net::TcpStream;
-use std::{io, process};
+use std::{io, fmt};
 use std::io::Write;
 use std::error::Error;
-use std::fmt;
 
-use kvsys::chunktps::ChunktpConnection;
 use kvsys::kvstorage::{Key, Value};
-use kvsys::kvserver::protocol::{Request, ReplyChunk};
+use kvsys::kvclient::KVClient;
 
 #[derive(Debug)]
-struct ClientError {
+pub struct ClientError {
     description: String
 }
 
@@ -23,10 +21,11 @@ impl Error for ClientError {
 }
 
 impl ClientError {
-    fn new(description: &str) -> Self {
+    pub fn new(description: &str) -> Self {
         ClientError { description: description.to_owned() }
     }
 }
+
 
 fn main() {
     env_logger::init();
@@ -52,113 +51,32 @@ fn main() {
 }
 
 fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
-    let mut chunktps = ChunktpConnection::new(tcp_stream);
+    let mut client = KVClient::new(tcp_stream);
     loop {
         print!("kv-client> ");
         io::stdout().flush().unwrap();
 
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
-        match parse_input(command) {
-            Ok(request) => {
-                chunktps.write_chunk(request.serialize())?;
-                handle_server_reply(&mut chunktps, request)?;
-            },
-            Err(e) => {
-                eprintln!("{}", e)
-            }
+        match parse_command(command) {
+            Ok(command) => exec_command(&mut client, command)?,
+            Err(e) => println!("{}", e)
         }
     }
 }
 
-fn handle_server_reply(chunktps: &mut ChunktpConnection, request: Request) -> Result<(), Box<dyn Error>> {
-    match request {
-        Request::Close => {
-            process::exit(0)
-        },
-        Request::Del(_) => {
-            let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
-            match reply {
-                ReplyChunk::Number(number ) => {
-                    println!("Ok, {} rows affected.", number);
-                    Ok(())
-                },
-                ReplyChunk::Error => {
-                    eprintln!("deletion failed, server error");
-                    Ok(())
-                }
-                _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
-            }
-        },
-        Request::Scan(_, _) => {
-            loop {
-                let chunk = chunktps.read_chunk()?;
-                if chunk.len() == 0 {
-                    return Ok(())
-                }
-                let reply = ReplyChunk::deserialize(chunk)?;
-                match reply {
-                    ReplyChunk::KVPairs(kv_pairs) => {
-                        for (key, value) in kv_pairs {
-                            println!("{} => {}", key, value)
-                        }
-                    },
-                    _ => return Err(Box::new(ClientError::new("unexpected reply chunk kind")))
-                }
-            }
-        },
-        Request::Get(key) => {
-            let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
-            match reply {
-                ReplyChunk::SingleValue(value ) => {
-                    if let Some(value) = value {
-                        println!("{} => {}", key, value);
-                    } else {
-                        println!("{} => nil", key);
-                    }
-                    Ok(())
-                }
-                _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
-            }
-        },
-        Request::Put(_, _) => {
-            let reply = ReplyChunk::deserialize(chunktps.read_chunk()?)?;
-            match reply {
-                ReplyChunk::Success => {
-                    println!("data successfully inserted.");
-                    Ok(())
-                },
-                ReplyChunk::Error => {
-                    eprintln!("insertion failed, server error");
-                    Ok(())
-                }
-                _ => Err(Box::new(ClientError::new("unexpected reply chunk kind")))
-            }
-        }
-    }
-
+enum Command {
+    Get(Key),
+    Put(Key, Value),
+    Scan(Key, Key),
+    Delete(Key),
+    Close
 }
 
-fn parse_input(command: String) -> Result<Request, ClientError> {
-    let check_key_size = | slice: &[u8] | {
-        Key::from_slice_checked(slice).ok_or(ClientError::new("incorrect key size"))
-    };
-
-    let check_value_size = | slice: &[u8] | {
-        if slice.len() < 256 {
-            let mut ret = [0; 256];
-            for i in 0..slice.len() {
-                ret[i] = slice[i];
-            }
-            Ok(Value::from_slice(&ret))
-        } else {
-            Value::from_slice_checked(slice).ok_or(ClientError::new("incorrect value size"))
-        }
-    };
-
+fn parse_command(command: String) -> Result<Command, ClientError> {
     let parts = command.trim().split_whitespace().collect::<Vec<_>>();
     if parts.len() == 0 {
-        return Err(ClientError::new("no command given!"))
+        return Err(ClientError::new("no command given!"));
     }
     match parts[0] {
         "get" => {
@@ -166,7 +84,7 @@ fn parse_input(command: String) -> Result<Request, ClientError> {
                 return Err(ClientError::new("`get` requires exactly 1 argument"))
             }
             let key = check_key_size(&parts[1].as_bytes())?;
-            Ok(Request::Get(key))
+            Ok(Command::Get(key))
         },
         "put" => {
             if parts.len() != 3 {
@@ -175,7 +93,7 @@ fn parse_input(command: String) -> Result<Request, ClientError> {
 
             let key = check_key_size(parts[1].as_bytes())?;
             let value = check_value_size(parts[2].as_bytes())?;
-            Ok(Request::Put(key, value))
+            Ok(Command::Put(key, value))
         },
         "scan" => {
             if parts.len() != 3 {
@@ -184,24 +102,77 @@ fn parse_input(command: String) -> Result<Request, ClientError> {
 
             let key1 = check_key_size(parts[1].as_bytes())?;
             let key2 = check_key_size(parts[2].as_bytes())?;
-            Ok(Request::Scan(key1, key2))
+            Ok(Command::Scan(key1, key2))
         },
         "del" | "delete" => {
             if parts.len() != 2 {
                 return Err(ClientError::new("delete requires exactly 1 argument"))
             }
-
             let key = check_key_size(parts[1].as_bytes())?;
-            Ok(Request::Del(key))
+            Ok(Command::Delete(key))
         },
         "close" => {
-            if parts.len() != 1 {
-                eprintln!("close requires no argument");
-            }
-            Ok(Request::Close)
+            Ok(Command::Close)
         }
         _ => {
             Err(ClientError::new("unknown command"))
         }
+    }
+}
+
+fn exec_command(client: &mut KVClient, command: Command) -> Result<(), Box<dyn Error>> {
+    match command {
+        Command::Get(key) => {
+            client.do_get(key, handle_get_result)
+        },
+        Command::Put(key, value) => {
+            client.do_put(key, value)?;
+            println!("  Done");
+            Ok(())
+        },
+        Command::Scan(key1, key2) => {
+            client.do_scan(key1, key2, handle_scan_result)?;
+            Ok(())
+        },
+        Command::Delete(key) => {
+            client.do_delete(key, handle_delete_result)
+        },
+        Command::Close => {
+            Ok(client.do_close())
+        }
+    }
+}
+
+fn handle_get_result(value: Option<Value>) -> () {
+    if let Some(value) = value {
+        println!("  {}", value);
+    } else {
+        println!("  Nil");
+    }
+}
+
+fn handle_delete_result(rows_affected: usize) -> () {
+    println!("  Ok, {} rows affected", rows_affected)
+}
+
+fn handle_scan_result(kv_pairs: Vec<(Key, Value)>) -> () {
+    for (key, value) in kv_pairs.iter() {
+        println!("  {} => {}", key, value)
+    }
+}
+
+fn check_key_size(slice: &[u8]) -> Result<Key, ClientError> {
+    Key::from_slice_checked(slice).ok_or(ClientError::new("incorrect key size"))
+}
+
+fn check_value_size(slice: &[u8]) -> Result<Value, ClientError> {
+    if slice.len() < 256 {
+        let mut ret = [0; 256];
+        for i in 0..slice.len() {
+            ret[i] = slice[i];
+        }
+        Ok(Value::from_slice(&ret))
+    } else {
+        Value::from_slice_checked(slice).ok_or(ClientError::new("incorrect value size"))
     }
 }

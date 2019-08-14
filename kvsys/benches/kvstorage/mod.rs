@@ -9,6 +9,7 @@ mod bench {
     use std::sync::{Arc, RwLock};
     use test::Bencher;
 
+    // warning: this benchmark is expensive
     #[bench]
     fn test_multi_thread_rw(b: &mut Bencher) {
         let _ = fs::remove_file("bench_mtrw.kv");
@@ -28,7 +29,7 @@ mod bench {
         let kv = Arc::new(RwLock::new(kv));
         let values2 = Arc::new(RwLock::new(values2));
 
-        b.iter(move || {
+        let f = move || {
             let mut readers = Vec::new();
             for _ in 0..4 {
                 let kv = kv.clone();
@@ -55,6 +56,8 @@ mod bench {
                 let _ = reader.join();
             }
             let _ = writer.join();
-        });
+        };
+
+        b.iter(f);
     }
 }
