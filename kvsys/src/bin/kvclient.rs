@@ -7,7 +7,7 @@ use kvsys::kvstorage::{Key, Value};
 use kvsys::kvclient::KVClient;
 
 #[derive(Debug)]
-pub struct ClientError {
+struct ClientError {
     description: String
 }
 

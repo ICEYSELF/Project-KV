@@ -24,13 +24,17 @@ pub fn run_server(config: KVServerConfig) {
             error!("error occurred when creating storage engine: {}", e);
             process::exit(1);
         });
+    info!("done creating storage engine");
     let tcp_listener = bind_tcp_listener(&config).unwrap_or_else(
         | e | {
             error!("error occurred when creating TCP listener: {}", e);
             process::exit(1);
         });
+    info!("successfully bounded TCP listener");
     let pool = ThreadPool::new(config.threads as usize);
+    info!("successfully created thread pool");
 
+    info!("done initialization, started listening requests.");
     for stream in tcp_listener.incoming() {
         if let Err(e) = stream {
             warn!("an TCP error occurred, extra info: {}", e);
@@ -200,7 +204,7 @@ mod test_server_handle_connection {
         let _ = fs::remove_file("test_scan.kv");
         let log_file = fs::File::create("test_scan.kv").unwrap();
         let storage_engine = Arc::new(RwLock::new(KVStorage::new(log_file)));
-        for i in 0..255 {
+        for i in 0..2048 {
             let key = gen_key_n(i);
             let value = gen_value();
             storage_engine.write().unwrap().put(&key, &value).unwrap();
@@ -215,7 +219,7 @@ mod test_server_handle_connection {
         thread::sleep(Duration::from_secs(1));
         let tcp_stream = TcpStream::connect("127.0.0.1:4396").unwrap();
         let mut chunktps = ChunktpConnection::new(tcp_stream);
-        chunktps.write_chunk(Request::Scan(gen_key_n(0), gen_key_n(254)).serialize()).unwrap();
+        chunktps.write_chunk(Request::Scan(gen_key_n(0), gen_key_n(2048)).serialize()).unwrap();
 
         let mut total_data = 0;
         loop {
@@ -235,7 +239,7 @@ mod test_server_handle_connection {
                 _ => panic!()
             }
         }
-        assert_eq!(total_data, 254);
+        assert_eq!(total_data, 2048);
 
         chunktps.write_chunk(Request::Close.serialize()).unwrap();
         t.join().unwrap();

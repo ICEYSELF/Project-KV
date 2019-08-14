@@ -28,8 +28,12 @@ impl KVServerConfig {
 
     /// Creates a `KVServerConfig` from command line arguments (`clap::ArgMatches`).
     ///
-    /// If there are some formal parameters missing from the command line argument, this function will generate some
-    /// `Info` level log information.
+    /// This function requires three formal parameters from commandline: `dbfile` of type `String`
+    /// for database file name, `port` of type `u16` for listening port and `threads` of type `u16`
+    /// for thread pool size. If there are some formal parameters missing from the command line
+    /// argument, or the arguments provided from command line does not satisfy the type
+    /// requirements, this function will generate some `Info` level log, and use default values to
+    /// fill in these parameters.
     pub fn from_arg_matches(matches: ArgMatches) -> Self {
         let db_file = value_t!(matches, "dbfile", String).unwrap_or_else(|_| {
                 info!("no valid dbfile provided from commandline, using default file name '{}'", DEFAULT_FILENAME);

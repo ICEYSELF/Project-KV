@@ -13,6 +13,9 @@ name = "kvserver"
 [[bin]]
 name = "kvclient"
 
+[[bin]]
+name = "gen_bigdata"
+
 [[test]]
 name = "kvstorage_tests"
 path = "tests/kvstorage/mod.rs"
@@ -34,6 +37,7 @@ env_logger = "0.6.2"
 
 # This library is proved to be bullshit
 # criterion = "0.2.11"
+# -- However, libtest is another piece of bullshit
 
 # This library is proved to be bullshit
 # threads_pool = "0.2.2"

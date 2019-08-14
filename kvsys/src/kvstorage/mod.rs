@@ -36,6 +36,8 @@
 //!
 //! This API looks ugly, but let us keep it for sometime.
 
+pub mod disklog;
+
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -303,8 +305,8 @@ impl KVStorage {
         }
     }
 
-    /// Trying put the `key` - `value` pair into storage, returns `Err` if the internal logging
-    /// system goes wrong
+    /// Trying put the `key` - `value` pair into storage, returns `Err` if the logging file
+    /// unexpectedly goes wrong
     pub fn put(&mut self, key: &Key, value: &Value) -> Result<(), Box<dyn Error>>{
         let encoded_key = key.encode();
         let value = Arc::new(*value);

@@ -45,6 +45,20 @@ const GET: u8 = b'G';
 const DEL: u8 = b'D';
 const CLOSE: u8 = b'C';
 
+// Request format
+//  -- 1 byte functionality
+//     'S'
+//     -- KEY_SIZE key1
+//     -- KEY_SIZE key2
+//     'P'
+//     -- KEY_SIZE key
+//     -- VALUE_SIZE value
+//     'G'
+//     -- KEY_SIZE key
+//     'D'
+//     -- KEY_SIZE key
+//     'C'
+
 /// A request sent by client or received by server, see its enumerators for further information
 pub enum Request {
     Scan(Key, Key),
@@ -136,6 +150,17 @@ impl Request {
     }
 }
 
+// Reply format
+// -- 1 byte data kind
+//    'S'
+//    -- VALUE_SIZE value
+//    'N'
+//    -- 8 bytes number
+//    'P'
+//    -- multiple KEY_SIZE + VALUE_SIZE key-value pairs
+//    'E'
+//    'A'
+
 const SINGLE_VALUE: u8 = b'S';
 const NUMBER: u8 = b'N';
 const KV_PAIRS: u8 = b'P';
@@ -168,8 +193,8 @@ impl ServerReplyChunk<'_> {
             ServerReplyChunk::Number(number) => {
                 let mut ret = vec![NUMBER];
                 let mut number = *number;
-                let mut arr = [0u8; KEY_SIZE];
-                for i in (0..KEY_SIZE).rev() {
+                let mut arr = [0u8; 8];
+                for i in (0..8).rev() {
                     arr[i] = (number % 256) as u8;
                     number /= 256;
                 }
