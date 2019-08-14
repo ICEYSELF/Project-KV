@@ -63,9 +63,9 @@ impl KVClient {
     /// ```
     ///
     /// Returns `Err` if TCP connection fails or Chunktp fails
-    pub fn do_get<F, T>(&mut self, key: Key, result_handler: F) -> Result<T, Box<dyn Error>>
+    pub fn do_get<F, T>(&mut self, key: &Key, result_handler: F) -> Result<T, Box<dyn Error>>
         where F: Fn(Option<Value>) -> T {
-        self.chunktps.write_chunk(Request::Get(key).serialize())?;
+        self.chunktps.write_chunk(Request::Get(*key).serialize())?;
         let reply = ReplyChunk::deserialize(self.chunktps.read_chunk()?)?;
         match reply {
             ReplyChunk::SingleValue(value ) => {
@@ -81,8 +81,8 @@ impl KVClient {
     /// goes on well.
     ///
     /// Returns `Err` if TCP connection fails, Chunktp fails or server fails.
-    pub fn do_put(&mut self, key: Key, value: Value) -> Result<(), Box<dyn Error>> {
-        self.chunktps.write_chunk(Request::Put(key, value).serialize())?;
+    pub fn do_put(&mut self, key: &Key, value: &Value) -> Result<(), Box<dyn Error>> {
+        self.chunktps.write_chunk(Request::Put(*key, *value).serialize())?;
         let reply = ReplyChunk::deserialize(self.chunktps.read_chunk()?)?;
         match reply {
             ReplyChunk::Success => {
@@ -117,9 +117,9 @@ impl KVClient {
     /// side effects, for example, interacting with anther database.
     ///
     /// Returns `Err` if TCP connection fails or Chunktp fails
-    pub fn do_scan<F, T>(&mut self, key1: Key, key2: Key, chunk_handler: F) -> Result<Vec<T>, Box<dyn Error>>
+    pub fn do_scan<F, T>(&mut self, key1: &Key, key2: &Key, chunk_handler: F) -> Result<Vec<T>, Box<dyn Error>>
         where F: Fn(Vec<(Key, Value)>) -> T {
-        self.chunktps.write_chunk(Request::Scan(key1, key2).serialize())?;
+        self.chunktps.write_chunk(Request::Scan(*key1, *key2).serialize())?;
         let mut ret = Vec::new();
         loop {
             let chunk = self.chunktps.read_chunk()?;
@@ -148,9 +148,9 @@ impl KVClient {
     /// ```
     ///
     /// Returns `Err` if TCP connection fails, Chunktp fails or server fails
-    pub fn do_delete<F, T>(&mut self, key: Key, result_handler: F) -> Result<T, Box<dyn Error>>
+    pub fn do_delete<F, T>(&mut self, key: &Key, result_handler: F) -> Result<T, Box<dyn Error>>
         where F: Fn(usize) -> T {
-        self.chunktps.write_chunk(Request::Del(key).serialize())?;
+        self.chunktps.write_chunk(Request::Del(*key).serialize())?;
         let reply = ReplyChunk::deserialize(self.chunktps.read_chunk()?)?;
         match reply {
             ReplyChunk::Number(number ) => {

@@ -58,7 +58,12 @@ fn mainloop(tcp_stream: TcpStream) -> Result<(), Box<dyn Error>> {
         let mut command = String::new();
         io::stdin().read_line(&mut command).unwrap();
         match parse_command(command) {
-            Ok(command) => exec_command(&mut client, command)?,
+            Ok(command) => {
+                exec_command(&mut client, &command)?;
+                if let Command::Close = command {
+                    return Ok(());
+                }
+            },
             Err(e) => println!("{}", e)
         }
     }
@@ -119,7 +124,7 @@ fn parse_command(command: String) -> Result<Command, ClientError> {
     }
 }
 
-fn exec_command(client: &mut KVClient, command: Command) -> Result<(), Box<dyn Error>> {
+fn exec_command(client: &mut KVClient, command: &Command) -> Result<(), Box<dyn Error>> {
     match command {
         Command::Get(key) => {
             client.do_get(key, handle_get_result)
