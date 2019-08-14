@@ -1,3 +1,8 @@
+//! A thread pool directly shipped from TRPL
+//!
+//! Read TRPL for more information, no documentation will be added since the interface is already
+//! intuitive enough
+
 use std::thread;
 use std::sync::{mpsc, Arc, Mutex};
 use log::info;
